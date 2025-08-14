@@ -1,0 +1,1 @@
+from .scripts.view_trajectory import view_trajectory

@@ -1,0 +1,8 @@
+Conda installation:
+
+Manual installation:
+- PyRosetta (python 3.10 compatible)
+Optional packages:
+- gmx_MMPBSA
+- md_analysis
+- rcsbearchapi (pip)
