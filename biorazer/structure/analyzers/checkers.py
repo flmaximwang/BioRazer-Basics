@@ -29,3 +29,20 @@ def is_steric_clashed(atom_coords: np.ndarray, cutoff: float = 1.2):
         if distance < cutoff:
             return True
     return False
+
+
+def is_hydrided(atom_array):
+    """
+    Check if the atom array contains hydrogen atoms.
+
+    Parameters
+    ----------
+    atom_array : bio_struct.AtomArray
+        The biotite structure array containing the atoms.
+
+    Returns
+    -------
+    bool
+        True if the atom array contains hydrogen atoms, False otherwise.
+    """
+    return np.any(atom_array.element == "H")

@@ -17,13 +17,24 @@ def report_interface_atoms(
 def report_hbonds(
     atom_array: bio_struct.AtomArray, selection1, selection2, format="pymol", **kwargs
 ):
+    """
+
+    Parameters
+    ----------
+    format: str
+        - pymol: print PyMOL commands to visualize the hydrogen bonds
+        - list: return a list of tuples (donor, hydrogen, acceptor)
+        - text: print hydrogen bonds in text format
+    """
 
     formats = ["pymol", "text", "list"]
     assert (
         format in formats
     ), f"Format {format} not supported. Supported formats: {formats}"
 
-    if not checkers.is_hydrided(atom_array):
+    # 需要加氢后才能计算氢键
+    model_is_hydrided = checkers.is_hydrided(atom_array)
+    if not model_is_hydrided:
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
 
@@ -37,45 +48,17 @@ def report_hbonds(
         print_with_decoration("Copy the command below to PyMOL")
         print(f"select hbonds, not all")  # Initialize the selection
         for i, hbond in enumerate(hbonds, start=1):
-            hbond_atoms = atom_array[hbond]
-            hbond_atom_dict = {"N": [], "O": [], "H": []}
-            for hbond_atom in hbond_atoms:
-                if hbond_atom.element == "H":
-                    hbond_atom_dict["H"].append(hbond_atom)
-                elif hbond_atom.element == "O":
-                    hbond_atom_dict["O"].append(hbond_atom)
-                elif hbond_atom.element == "N":
-                    hbond_atom_dict["N"].append(hbond_atom)
-                else:
-                    raise ValueError(
-                        f"Unexpected element {hbond_atom.element} in hbond atoms."
-                    )
-            if len(hbond_atom_dict["H"]) > 0:
-                atom_1 = hbond_atom_dict["H"][0]
-                if len(hbond_atom_dict["N"]) == 2:
-                    heavy_atoms = hbond_atom_dict["N"]
-                elif len(hbond_atom_dict["O"]) == 2:
-                    heavy_atoms = hbond_atom_dict["O"]
-                else:
-                    heavy_atoms = [hbond_atom_dict["N"][0], hbond_atom_dict["O"][0]]
-                atom_2 = (
-                    heavy_atoms[0]
-                    if heavy_atoms[0].res_id != atom_1.res_id
-                    else heavy_atoms[1]
+            donor, h, acceptor = atom_array[hbond]
+            if not model_is_hydrided:
+                print(
+                    f"distance hbond_{i}, ///{donor.chain_id}/{donor.res_id}/{donor.atom_name}, ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
                 )
             else:
-                if len(hbond_atom_dict["N"]) == 2:
-                    atom_1, atom_2 = hbond_atom_dict["N"]
-                elif len(hbond_atom_dict["O"]) == 2:
-                    atom_1, atom_2 = hbond_atom_dict["O"]
-                else:
-                    atom_1 = hbond_atom_dict["N"][0]
-                    atom_2 = hbond_atom_dict["O"][0]
+                print(
+                    f"distance hbond_{i}, ///{h.chain_id}/{h.res_id}/{h.atom_name}, ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
+                )
             print(
-                f"distance hbond_{i}, ///{atom_1.chain_id}/{atom_1.res_id}/{atom_1.atom_name}, ///{atom_2.chain_id}/{atom_2.res_id}/{atom_2.atom_name}"
-            )
-            print(
-                f"select hbonds, byres ///{atom_1.chain_id}/{atom_1.res_id}/{atom_1.atom_name} or byres ///{atom_2.chain_id}/{atom_2.res_id}/{atom_2.atom_name} or hbonds"
+                f"select hbonds, byres ///{donor.chain_id}/{donor.res_id}/{donor.atom_name} or byres ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name} or hbonds"
             )
         print(f"show sticks, byres hbonds")
         print_decoration_line()
@@ -84,20 +67,8 @@ def report_hbonds(
     elif format == "list":
         res = []
         for hbond in hbonds:
-            hbond_atoms = atom_array[hbond]
-            hbond_atom_dict = {"N": [], "O": [], "H": []}
-            for hbond_atom in hbond_atoms:
-                if hbond_atom.element == "H":
-                    hbond_atom_dict["H"].append(hbond_atom)
-                elif hbond_atom.element == "O":
-                    hbond_atom_dict["O"].append(hbond_atom)
-                elif hbond_atom.element == "N":
-                    hbond_atom_dict["N"].append(hbond_atom)
-                else:
-                    raise ValueError(
-                        f"Unexpected element {hbond_atom.element} in hbond atoms."
-                    )
-            res.append(hbond_atom_dict)
+            donor, h, acceptor = atom_array[hbond]
+            res.append((donor, h, acceptor))
         return res
     else:
         raise ValueError(f"Format {format} not supported. Supported formats: {formats}")
