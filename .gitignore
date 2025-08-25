@@ -1,4 +1,6 @@
-__pycache__
 .vscode/
-.poetry.lock
+poetry.lock
+build
 test
+__pycache__
+*.so

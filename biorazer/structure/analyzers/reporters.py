@@ -5,17 +5,49 @@ from biorazer.structure.analyzers import checkers, selectors
 import hydride
 
 
-def report_interface_atoms(
+def report_interface_residues(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
     distance_cutoff=3.5,
+    fmt="pymol",
+    model_name="",
 ):
-    pass
+    interface_atom_mask_1, interface_atom_mask_2, _ = selectors.mask_interface_atoms(
+        atom_array,
+        selection1=selection1,
+        selection2=selection2,
+        distance_cutoff=distance_cutoff,
+    )
+    interface_atom_mask = interface_atom_mask_1 | interface_atom_mask_2
+
+    interface_residues = []
+    for atom in atom_array[interface_atom_mask]:
+        identifier = (atom.chain_id, atom.res_id)
+        if not identifier in interface_residues:
+            interface_residues.append(identifier)
+
+    if fmt == "list":
+        return interface_residues
+    elif fmt == "pymol":
+        print_with_decoration("Copy the command below to PyMOL")
+        print(f"select {model_name}_interface, not all")
+        for chain_id, res_id in interface_residues:
+            print(
+                f"select {model_name}_interface, /{model_name}//{chain_id}/{res_id}/ or {model_name}_interface"
+            )
+        print_decoration_line()
+    else:
+        raise ValueError(f"Unsupported format {fmt}")
 
 
 def report_hbonds(
-    atom_array: bio_struct.AtomArray, selection1, selection2, format="pymol", **kwargs
+    atom_array: bio_struct.AtomArray,
+    selection1,
+    selection2,
+    format="pymol",
+    model_name="",
+    **kwargs,
 ):
     """
 
@@ -46,21 +78,21 @@ def report_hbonds(
 
     if format == "pymol":
         print_with_decoration("Copy the command below to PyMOL")
-        print(f"select hbonds, not all")  # Initialize the selection
+        print(f"select {model_name}_hbonds, not all")  # Initialize the selection
         for i, hbond in enumerate(hbonds, start=1):
             donor, h, acceptor = atom_array[hbond]
             if not model_is_hydrided:
                 print(
-                    f"distance hbond_{i}, ///{donor.chain_id}/{donor.res_id}/{donor.atom_name}, ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
+                    f"distance {model_name}_hbond_{i}, /{model_name}//{donor.chain_id}/{donor.res_id}/{donor.atom_name}, /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
                 )
             else:
                 print(
-                    f"distance hbond_{i}, ///{h.chain_id}/{h.res_id}/{h.atom_name}, ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
+                    f"distance {model_name}_hbond_{i}, /{model_name}//{h.chain_id}/{h.res_id}/{h.atom_name}, /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
                 )
             print(
-                f"select hbonds, byres ///{donor.chain_id}/{donor.res_id}/{donor.atom_name} or byres ///{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name} or hbonds"
+                f"select {model_name}_hbonds, byres /{model_name}//{donor.chain_id}/{donor.res_id}/{donor.atom_name} or byres /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name} or {model_name}_hbonds"
             )
-        print(f"show sticks, byres hbonds")
+        print(f"show sticks, byres {model_name}_hbonds")
         print_decoration_line()
     elif format == "text":
         pass
@@ -78,9 +110,9 @@ def report_unsat_hbonds(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
-    format="pymol",
-    interface_kwargs=dict(distance_cutoff=3.5),
-    hbond_kwargs=dict(),
+    fmt="pymol",
+    model_name="",
+    **kwargs,
 ):
     """
     Report unsatisfied hydrogen bonds in the interface between two selections of atoms.
@@ -97,20 +129,20 @@ def report_unsat_hbonds(
         The output format, by default "pymol".
     """
 
-    if not checkers.is_hydrided(atom_array):
-        atom_array, _ = hydride.add_hydrogen(atom_array)
-        atom_array.coord = hydride.relax_hydrogen(atom_array)
-
-    interface_mask_1, interface_mask_2, _ = selectors.mask_interface_atoms(
-        atom_array, selection1, selection2, **interface_kwargs
-    )
-    interface_mask = interface_mask_1 | interface_mask_2
-    interface_res_mask = selectors.by_res_id(atom_array, interface_mask)
-
-    hbond_mask_1, hbond_mask_2, _ = selectors.mask_hbond_atoms(
-        atom_array, interface_res_mask, np.ones(atom_array.shape, bool), **hbond_kwargs
+    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = selectors.mask_unsat_hbond_atoms(
+        atom_array, selection1=selection1, selection2=selection2, **kwargs
     )
 
-    NO_mask = (atom_array.element == "O") | (atom_array.element == "N")
-    interface_NO_mask = interface_mask & NO_mask
-    unsat_hbond_mask = interface_NO_mask & ~hbond_mask_1
+    unsat_hbond_mask = unsat_hbond_mask_1 | unsat_hbond_mask_2
+
+    if fmt == "pymol":
+        selection_name = f"{model_name}_unsat_hbonds"
+        print_with_decoration("Copy the command below to PyMOL")
+        print(f"select {selection_name}, not all")
+        for atom in atom_array[unsat_hbond_mask]:
+            print(
+                f"select {selection_name}, /{model_name}//{atom.chain_id}/{atom.res_id}/{atom.atom_name} or {selection_name}"
+            )
+        print_decoration_line()
+    else:
+        raise ValueError(f"Unsupported format {fmt}")

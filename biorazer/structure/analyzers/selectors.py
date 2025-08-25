@@ -31,10 +31,33 @@ def by_res_id(atom_array: bio_struct.AtomArray, mask: np.ndarray):
     return np.isin(atom_array.res_id, res_ids_in_mask)
 
 
+def mask_atom_within_distance(
+    atom_array_center: bio_struct.AtomArray,
+    atom_array_query: bio_struct.AtomArray,
+    distance: float,
+):
+    """
+    Find atoms in atom_array_query within a certain distance from any atom in atom_array_center.
+    """
+
+    kdtree_center = KDTree(atom_array_center.coord)
+    kdtree_around = KDTree(atom_array_query.coord)
+    neighbors = kdtree_center.query_ball_tree(kdtree_around, distance)
+    indices = set()
+    for neighbor_indices in neighbors:
+        for index in neighbor_indices:
+            indices.add(index)
+    indices = list(indices)
+    indices.sort()
+    mask = np.zeros(atom_array_query.shape, dtype=bool)
+    mask[indices] = True
+    return mask
+
+
 def mask_interface_atoms(
     atom_array: bio_struct.AtomArray,
-    selection_1: np.ndarray,
-    selection_2: np.ndarray,
+    selection1: np.ndarray,
+    selection2: np.ndarray,
     distance_cutoff: float = 3.5,
 ):
     """
@@ -58,10 +81,10 @@ def mask_interface_atoms(
     """
 
     heavy_atom_mask = atom_array.element != "H"
-    heavy_atom_indices_1 = np.where(heavy_atom_mask & selection_1)[0]
-    heavy_atom_indices_2 = np.where(heavy_atom_mask & selection_2)[0]
-    heavy_atom_coords_1 = atom_array.coord[heavy_atom_mask & selection_1]
-    heavy_atom_coords_2 = atom_array.coord[heavy_atom_mask & selection_2]
+    heavy_atom_indices_1 = np.where(heavy_atom_mask & selection1)[0]
+    heavy_atom_indices_2 = np.where(heavy_atom_mask & selection2)[0]
+    heavy_atom_coords_1 = atom_array.coord[heavy_atom_mask & selection1]
+    heavy_atom_coords_2 = atom_array.coord[heavy_atom_mask & selection2]
     tree_1 = KDTree(heavy_atom_coords_1)
     tree_2 = KDTree(heavy_atom_coords_2)
     neighbors = tree_1.query_ball_tree(tree_2, distance_cutoff)
@@ -134,8 +157,8 @@ def mask_unsat_hbond_atoms(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
-    sasa_cutoff=0.5,
-    interface_kwargs=dict(distance_cutoff=3.5),
+    sasa_kwargs=dict(sasa_cutoff=0.5, probe_radius=1.4),
+    interface_kwargs=dict(distance_cutoff=5),
     hbond_kwargs=dict(),
 ):
     """
@@ -151,6 +174,10 @@ def mask_unsat_hbond_atoms(
         The atom mask for the 2nd selection.
     format : str, optional
         The output format, by default "pymol".
+
+    Warnings
+    --------
+    - Unsaturated heavy atoms exposed to inner cavities will not be found by this method
     """
 
     if not checkers.is_hydrided(atom_array):
@@ -167,22 +194,27 @@ def mask_unsat_hbond_atoms(
         atom_array, interface_res_mask, np.ones(atom_array.shape, bool), **hbond_kwargs
     )
 
-    NO_mask = (atom_array.element == "O") | (atom_array.element == "N")
+    NOS_mask = (
+        (atom_array.element == "O")
+        | (atom_array.element == "N")
+        | (atom_array.element == "S")
+    )
     heavy_mask = atom_array.element != "H"
 
     # 接下来, 使用无 H 的 SASA 计算
+    sasa_cutoff = sasa_kwargs.pop("sasa_cutoff")
     atom_array_without_h = atom_array[heavy_mask]
-    atom_sasa = bio_struct.sasa(atom_array_without_h, vdw_radii="Single")
+    atom_sasa = bio_struct.sasa(atom_array_without_h, vdw_radii="Single", **sasa_kwargs)
     sasa_mask = atom_sasa < sasa_cutoff
     unsat_hbonds_mask_1 = revert_mask(
         atom_array,
         heavy_mask,
-        (interface_mask_1 & NO_mask & ~hbond_mask_1)[heavy_mask] & sasa_mask,
+        (interface_mask_1 & NOS_mask & ~hbond_mask_1)[heavy_mask] & sasa_mask,
     )
     unsat_hbonds_mask_2 = revert_mask(
         atom_array,
         heavy_mask,
-        (interface_mask_2 & NO_mask & ~hbond_mask_2)[heavy_mask] & sasa_mask,
+        (interface_mask_2 & NOS_mask & ~hbond_mask_2)[heavy_mask] & sasa_mask,
     )
 
     return unsat_hbonds_mask_1, unsat_hbonds_mask_2, atom_array
