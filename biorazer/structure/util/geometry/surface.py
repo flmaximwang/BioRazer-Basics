@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.spatial import KDTree
-from biorazer.structure.utils.geometry.sphere import fibonacci_sphere_grid
+from .sphere import fibonacci_sphere_grid
 
 
 def fibonacci_surface_grid(

@@ -1,8 +1,8 @@
 import numpy as np
-import biotite.structure as bio_struct
-from biorazer.display import print_with_decoration, print_decoration_line
-from biorazer.structure.analyzers import checkers, selectors
+from biotite import structure as bio_struct
 import hydride
+from biorazer.display import print_with_decoration, print_decoration_line
+from . import check, select
 
 
 def report_interface_residues(
@@ -13,7 +13,7 @@ def report_interface_residues(
     fmt="pymol",
     model_name="",
 ):
-    interface_atom_mask_1, interface_atom_mask_2, _ = selectors.mask_interface_atoms(
+    interface_atom_mask_1, interface_atom_mask_2, _ = select.mask_interface_atoms(
         atom_array,
         selection1=selection1,
         selection2=selection2,
@@ -37,6 +37,7 @@ def report_interface_residues(
                 f"select {model_name}_interface, /{model_name}//{chain_id}/{res_id}/ or {model_name}_interface"
             )
         print_decoration_line()
+
     else:
         raise ValueError(f"Unsupported format {fmt}")
 
@@ -47,7 +48,11 @@ def report_hbonds(
     selection2,
     format="pymol",
     model_name="",
-    **kwargs,
+    cutoff_dist=2.5,
+    cutoff_angle=120,
+    donor_elements=("O", "N", "S"),
+    acceptor_elements=("O", "N", "S"),
+    periodic=False,
 ):
     """
 
@@ -65,7 +70,7 @@ def report_hbonds(
     ), f"Format {format} not supported. Supported formats: {formats}"
 
     # 需要加氢后才能计算氢键
-    model_is_hydrided = checkers.is_hydrided(atom_array)
+    model_is_hydrided = check.is_hydrided(atom_array)
     if not model_is_hydrided:
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
@@ -74,6 +79,12 @@ def report_hbonds(
         atom_array,
         selection1=selection1,
         selection2=selection2,
+        selection1_type="both",
+        cutoff_dist=cutoff_dist,
+        cutoff_angle=cutoff_angle,
+        donor_elements=donor_elements,
+        acceptor_elements=acceptor_elements,
+        periodic=periodic,
     )
 
     if format == "pymol":
@@ -81,14 +92,9 @@ def report_hbonds(
         print(f"select {model_name}_hbonds, not all")  # Initialize the selection
         for i, hbond in enumerate(hbonds, start=1):
             donor, h, acceptor = atom_array[hbond]
-            if not model_is_hydrided:
-                print(
-                    f"distance {model_name}_hbond_{i}, /{model_name}//{donor.chain_id}/{donor.res_id}/{donor.atom_name}, /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
-                )
-            else:
-                print(
-                    f"distance {model_name}_hbond_{i}, /{model_name}//{h.chain_id}/{h.res_id}/{h.atom_name}, /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
-                )
+            print(
+                f"distance {model_name}_hbond_{i}, /{model_name}//{donor.chain_id}/{donor.res_id}/{donor.atom_name}, /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name}"
+            )
             print(
                 f"select {model_name}_hbonds, byres /{model_name}//{donor.chain_id}/{donor.res_id}/{donor.atom_name} or byres /{model_name}//{acceptor.chain_id}/{acceptor.res_id}/{acceptor.atom_name} or {model_name}_hbonds"
             )
@@ -106,7 +112,7 @@ def report_hbonds(
         raise ValueError(f"Format {format} not supported. Supported formats: {formats}")
 
 
-def report_unsat_hbonds(
+def report_buried_unsat_hbonds(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
@@ -129,7 +135,7 @@ def report_unsat_hbonds(
         The output format, by default "pymol".
     """
 
-    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = selectors.mask_unsat_hbond_atoms(
+    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = select.mask_buried_unsat_hbond_atoms(
         atom_array, selection1=selection1, selection2=selection2, **kwargs
     )
 

@@ -1,8 +1,9 @@
+import warnings
 import numpy as np
 from scipy.spatial import KDTree
 import biotite.structure as bio_struct
 import hydride
-from . import checkers, reporters
+from . import check, report
 
 
 def revert_mask(atom_array: bio_struct.AtomArray, mask1: np.ndarray, mask2: np.ndarray):
@@ -31,7 +32,7 @@ def by_res_id(atom_array: bio_struct.AtomArray, mask: np.ndarray):
     return np.isin(atom_array.res_id, res_ids_in_mask)
 
 
-def mask_atom_within_distance(
+def mask_atoms_within_distance(
     atom_array_center: bio_struct.AtomArray,
     atom_array_query: bio_struct.AtomArray,
     distance: float,
@@ -78,6 +79,8 @@ def mask_interface_atoms(
         The interface atom mask from the 1st selection.
     interface_mask_2: bio_struct.AtomArray
         The interface atom mask from the 2nd selection.
+    atom_array: bio_struct.AtomArray
+        The biotite structure array.
     """
 
     heavy_atom_mask = atom_array.element != "H"
@@ -132,7 +135,7 @@ def mask_hbond_atoms(
         The biotite structure array with hydrogen atoms added if not present.
     """
 
-    if not checkers.is_hydrided(atom_array):
+    if not check.is_hydrided(atom_array):
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
 
@@ -153,12 +156,12 @@ def mask_hbond_atoms(
     return hbond_mask_1, hbond_mask_2, atom_array
 
 
-def mask_unsat_hbond_atoms(
+def mask_buried_unsat_hbond_atoms(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
     sasa_kwargs=dict(sasa_cutoff=0.5, probe_radius=1.4),
-    interface_kwargs=dict(distance_cutoff=5),
+    interface_kwargs=dict(distance_cutoff=3.5),
     hbond_kwargs=dict(),
 ):
     """
@@ -180,7 +183,7 @@ def mask_unsat_hbond_atoms(
     - Unsaturated heavy atoms exposed to inner cavities will not be found by this method
     """
 
-    if not checkers.is_hydrided(atom_array):
+    if not check.is_hydrided(atom_array):
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
 
@@ -190,31 +193,30 @@ def mask_unsat_hbond_atoms(
     interface_mask = interface_mask_1 | interface_mask_2
     interface_res_mask = by_res_id(atom_array, interface_mask)
 
-    hbond_mask_1, hbond_mask_2, _ = mask_hbond_atoms(
+    hbond_mask, _, _ = mask_hbond_atoms(
         atom_array, interface_res_mask, np.ones(atom_array.shape, bool), **hbond_kwargs
     )
 
-    NOS_mask = (
-        (atom_array.element == "O")
-        | (atom_array.element == "N")
-        | (atom_array.element == "S")
-    )
+    NOS_mask = np.isin(atom_array.element, ["N", "O", "S"])
     heavy_mask = atom_array.element != "H"
 
-    # 接下来, 使用无 H 的 SASA 计算
-    sasa_cutoff = sasa_kwargs.pop("sasa_cutoff")
+    # 接下来, 使用无 H 的 SASA 计算 buried atoms
+    sasa_kwargs_copy = sasa_kwargs.copy()
+    sasa_cutoff = sasa_kwargs_copy.pop("sasa_cutoff")
     atom_array_without_h = atom_array[heavy_mask]
-    atom_sasa = bio_struct.sasa(atom_array_without_h, vdw_radii="Single", **sasa_kwargs)
+    atom_sasa = bio_struct.sasa(
+        atom_array_without_h, vdw_radii="Single", **sasa_kwargs_copy
+    )
     sasa_mask = atom_sasa < sasa_cutoff
     unsat_hbonds_mask_1 = revert_mask(
         atom_array,
         heavy_mask,
-        (interface_mask_1 & NOS_mask & ~hbond_mask_1)[heavy_mask] & sasa_mask,
+        (interface_mask_1 & NOS_mask & ~hbond_mask)[heavy_mask] & sasa_mask,
     )
     unsat_hbonds_mask_2 = revert_mask(
         atom_array,
         heavy_mask,
-        (interface_mask_2 & NOS_mask & ~hbond_mask_2)[heavy_mask] & sasa_mask,
+        (interface_mask_2 & NOS_mask & ~hbond_mask)[heavy_mask] & sasa_mask,
     )
 
     return unsat_hbonds_mask_1, unsat_hbonds_mask_2, atom_array
