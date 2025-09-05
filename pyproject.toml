@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "biorazer"
 description = "A platform for analyzing various biological information"
-version = "0.4.6"
+version = "0.4.7"
 readme = "README.md"
 packages = [
     { include = "biorazer" },

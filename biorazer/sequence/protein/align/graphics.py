@@ -1,57 +1,48 @@
 import numpy as np
-from Bio import SeqIO
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
+from .alignment import Alignment
 
 
-def read_a3m(a3m_file_path):
-    try:
-        records = list(SeqIO.parse(a3m_file_path, "fasta"))
-    except Exception as e:
-        print(f"文件读取错误: {str(e)}")
-        return
-
-    if not records:
-        print("错误: 未找到有效序列")
-        return
-
-    alignment = []
-    for record in records:
-        # 将非大写字母 (核心比对区域) 转换为 -
-        cleaned_seq = "".join([c for c in str(record.seq) if not c.islower()])
-        alignment.append(cleaned_seq)
-
-    lengths = set([len(seq) for seq in alignment])
-    if len(lengths) > 1:
-        print("错误: 序列长度不一致")
-        return
-
-    # 将 alignment 转换为二维 numpy 数组
-    return alignment
-
-
-def plot_msa(msa: list[str], seq_len_list: list[int], sort_lines=True, dpi=100):
+def plot_msa_coverage(
+    msa: Alignment,
+    part_lengths: list[int] = [],
+    sort_lines=True,
+    figsize=(8, 5),
+    dpi=100,
+):
     """
-    可视化多序列比对（MSA）覆盖情况（第二版）
+    Visualize the coverage of a multiple sequence alignment (MSA).
 
-    参数：
-    feature_dict: 包含MSA特征的字典
-    sort_lines: 是否按序列相似度排序（默认True）
-    dpi: 图像分辨率
+    Parameters
+    ----------
+    msa: Alignment
+        Biotite Alignment object containing the MSA data
+    part_lengths: list of int
+        List of lengths for each segment in the MSA.
+        Sometimes your query is merged by multiple chains,
+        and this list indicates the lengths of each chain.
+    sort_lines: bool
+        Whether to sort the sequences based on their similarity to the query sequence
+    dpi: int
+        Dots per inch for the output figure resolution
     """
+    msa_seqs = list(map(str, msa.get_gapped_sequences()))
+    if len(part_lengths) == 0:
+        part_lengths = [len(msa_seqs[0])]
+    Ls = part_lengths
+
     # 获取查询序列
-    seq = msa.pop(0)
+    seq = msa_seqs.pop(0)
     seq = np.array(list(seq))
-    msa = np.array([list(seq) for seq in msa])
-
-    Ls = seq_len_list
+    msa_seqs = np.array([list(seq) for seq in msa_seqs])
 
     # 计算链的累积长度
     Ln = np.cumsum([0] + Ls)
-    N = msa.shape[0]
+    N = msa_seqs.shape[0]
 
     # 处理MSA数据
-    gap = msa != "-"  # 检测非空位（21代表空位）
-    qid = msa == seq  # 与查询序列相同的位点
+    gap = msa_seqs != "-"  # 检测非空位（21代表空位）
+    qid = msa_seqs == seq  # 与查询序列相同的位点
 
     # 计算链级别的覆盖情况
     gapid = np.stack([gap[:, Ln[i] : Ln[i + 1]].max(-1) for i in range(len(Ls))], -1)
@@ -87,7 +78,7 @@ def plot_msa(msa: list[str], seq_len_list: list[int], sort_lines=True, dpi=100):
     lines = np.concatenate(lines, 0)
 
     # 绘制图像
-    plt.figure(figsize=(8, 5), dpi=dpi)
+    plt.figure(figsize=figsize, dpi=dpi)
     plt.title("Sequence coverage")
     plt.imshow(
         lines,
@@ -114,4 +105,3 @@ def plot_msa(msa: list[str], seq_len_list: list[int], sort_lines=True, dpi=100):
     plt.colorbar(label="Sequence identity to query")
     plt.xlabel("Positions")
     plt.ylabel("Sequences")
-    return plt

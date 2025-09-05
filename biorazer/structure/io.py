@@ -1,5 +1,6 @@
 from pathlib import Path
 from biotite.structure.io import pdb, pdbx
+from biotite.structure import AtomArray
 import biotite.structure as bio_struc
 import biotite.sequence as bio_seq
 from biorazer.io import Converter
@@ -7,12 +8,12 @@ from biorazer.sequence.io import SEQ2FASTA
 
 
 class PDB2STRUCT(Converter):
-    def read(self, **kwargs) -> bio_struc.AtomArray:
+    def read(self, **kwargs) -> AtomArray:
         return pdb.get_structure(pdb.PDBFile.read(self.input_file), **kwargs)[0]
 
 
 class CIF2STRUCT(Converter):
-    def read(self, **kwargs) -> bio_struc.AtomArray:
+    def read(self, **kwargs) -> AtomArray:
         return pdbx.get_structure(pdbx.CIFFile.read(self.input_file), **kwargs)[0]
 
 
@@ -24,7 +25,7 @@ class STRUCT2CIF(Converter):
 
 
 class STRUCT2PDB(Converter):
-    def write(self, tmp, **kwargs):
+    def write(self, tmp: AtomArray, **kwargs):
         output_file_obj = pdb.PDBFile()
         pdb.set_structure(output_file_obj, tmp, **kwargs)
         output_file_obj.write(self.output_file)

@@ -23,20 +23,23 @@ def report_interface_residues(
 
     interface_residues = []
     for atom in atom_array[interface_atom_mask]:
-        identifier = (atom.chain_id, atom.res_id)
+        identifier = (str(atom.chain_id), int(atom.res_id))
         if not identifier in interface_residues:
             interface_residues.append(identifier)
 
     if fmt == "list":
         return interface_residues
     elif fmt == "pymol":
-        print_with_decoration("Copy the command below to PyMOL")
+        print_with_decoration("Copy the command below to PyMOL", decoration_char="#")
         print(f"select {model_name}_interface, not all")
         for chain_id, res_id in interface_residues:
             print(
                 f"select {model_name}_interface, /{model_name}//{chain_id}/{res_id}/ or {model_name}_interface"
             )
-        print_decoration_line()
+        print_decoration_line(decoration_char="#")
+    elif fmt == "text":
+        for chain_id, res_id in interface_residues:
+            print(f"Chain {chain_id}, Residue {res_id}")
 
     else:
         raise ValueError(f"Unsupported format {fmt}")
@@ -46,7 +49,7 @@ def report_hbonds(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
-    format="pymol",
+    fmt="pymol",
     model_name="",
     cutoff_dist=2.5,
     cutoff_angle=120,
@@ -64,16 +67,12 @@ def report_hbonds(
         - text: print hydrogen bonds in text format
     """
 
-    formats = ["pymol", "text", "list"]
-    assert (
-        format in formats
-    ), f"Format {format} not supported. Supported formats: {formats}"
-
     # 需要加氢后才能计算氢键
     model_is_hydrided = check.is_hydrided(atom_array)
     if not model_is_hydrided:
-        atom_array, _ = hydride.add_hydrogen(atom_array)
-        atom_array.coord = hydride.relax_hydrogen(atom_array)
+        raise Exception(
+            "Model is not hydrided. Please add hydrogens before calculating hydrogen bonds."
+        )
 
     hbonds = bio_struct.hbond(
         atom_array,
@@ -87,7 +86,7 @@ def report_hbonds(
         periodic=periodic,
     )
 
-    if format == "pymol":
+    if fmt == "pymol":
         print_with_decoration("Copy the command below to PyMOL")
         print(f"select {model_name}_hbonds, not all")  # Initialize the selection
         for i, hbond in enumerate(hbonds, start=1):
@@ -100,16 +99,21 @@ def report_hbonds(
             )
         print(f"show sticks, byres {model_name}_hbonds")
         print_decoration_line()
-    elif format == "text":
-        pass
-    elif format == "list":
+    elif fmt == "text":
+        print(f"Total {len(hbonds)} hydrogen bonds found:")
+        for i, hbond in enumerate(hbonds, start=1):
+            donor, h, acceptor = atom_array[hbond]
+            print(
+                f"H-bond {i}: Donor {donor.chain_id} {donor.res_name}{donor.res_id}({donor.atom_name}) -- Acceptor {acceptor.chain_id} {acceptor.res_name}{acceptor.res_id}({acceptor.atom_name}), Distance: {np.linalg.norm(donor.coord - acceptor.coord):.2f} Å"
+            )
+    elif fmt == "list":
         res = []
         for hbond in hbonds:
             donor, h, acceptor = atom_array[hbond]
             res.append((donor, h, acceptor))
         return res
     else:
-        raise ValueError(f"Format {format} not supported. Supported formats: {formats}")
+        raise ValueError(f"Format {fmt} not supported. Supported formats: {formats}")
 
 
 def report_buried_unsat_hbonds(
