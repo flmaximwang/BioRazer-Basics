@@ -59,11 +59,31 @@ class PDB2SEQ(Converter):
         for chain_id in chain_ids:
             chain_structure = structure[structure.chain_id == chain_id]
             res_ids, res_names = bio_struc.get_residues(chain_structure)
-            one_char_res_names = list(
-                map(lambda x: bio_seq.ProteinSequence.convert_letter_3to1(x), res_names)
-            )
+            res_ids = list(res_ids)
+            res_names = list(res_names)
+            one_char_res_names = []
+            for i in range(min(res_ids), max(res_ids) + 1):
+                try:
+                    idx = res_ids.index(i)
+                except ValueError:
+                    # Missing residue
+                    one_char_res_names.append("X")
+                    continue
+                res_name = res_names[idx]
+                if len(res_name) != 3:
+                    # Nucleotides
+                    break
+                try:
+                    one_char_res_names.append(
+                        bio_seq.ProteinSequence.convert_letter_3to1(res_name)
+                    )
+                except KeyError:
+                    # Non-standard amino acid or ligand
+                    one_char_res_names.append("X")
+
             sequence = "".join(one_char_res_names)
             res[chain_id] = sequence
+
         return res
 
 

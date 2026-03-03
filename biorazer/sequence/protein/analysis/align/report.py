@@ -1,6 +1,6 @@
 import numpy as np
 from biotite.sequence.align import Alignment
-from .alignment import AlignmentHelper
+from .util import AlignmentHelper
 
 
 def report_different_res_ids(alignment: Alignment):

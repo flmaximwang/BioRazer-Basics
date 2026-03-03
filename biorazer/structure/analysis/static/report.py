@@ -13,6 +13,16 @@ def report_interface_residues(
     fmt="pymol",
     model_name="",
 ):
+    """
+    Report interface residues between two selections of atoms in different formats.
+
+    Parameters
+    ----------
+    fmt : str
+        - pymol: print PyMOL commands to visualize the interface residues
+        - list: return a list of tuples (chain_id, res_id)
+        - text: print interface residues in text format
+    """
     interface_atom_mask_1, interface_atom_mask_2, _ = select.mask_interface_atoms(
         atom_array,
         selection1=selection1,

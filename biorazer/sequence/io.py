@@ -17,3 +17,22 @@ class SEQ2FASTA(Converter):
         for key, value in tmp.items():
             fasta_file[key] = value
         fasta_file.write(self.output_file)
+
+
+class FASTA2SEQ(Converter):
+
+    def read(self):
+        """
+        Read sequences from a FASTA file into a dictionary.
+
+        Returns
+        -------
+        dict[str, str]
+            A dictionary with sequence IDs as keys and sequences as values.
+        """
+
+        fasta_file = fasta.FastaFile.read(self.input_file)
+        seq_dict = {}
+        for key in fasta_file.keys():
+            seq_dict[key] = str(fasta_file[key])
+        return seq_dict

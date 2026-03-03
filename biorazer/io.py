@@ -2,6 +2,15 @@ from pathlib import Path
 
 
 class Converter:
+    """
+    Parameters
+    ----------
+    input_file : str or Path
+        The input file path.
+    output_file : str or Path
+        The output file path.
+    """
+
     def __init__(self, input_file: str | Path = "", output_file: str | Path = ""):
         self.input_file = Path(input_file)
         self.output_file = Path(output_file)

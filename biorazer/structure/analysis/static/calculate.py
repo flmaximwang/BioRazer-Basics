@@ -62,7 +62,7 @@ def hbond(
         atom_array,
         selection1=selection1,
         selection2=selection2,
-        format="list",
+        fmt="list",
         cutoff_dist=cutoff_dist,
         cutoff_angle=cutoff_angle,
         donor_elements=donor_elements,

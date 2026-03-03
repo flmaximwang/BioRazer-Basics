@@ -1,6 +1,6 @@
 from biotite.sequence import ProteinSequence
 from biorazer.io import Converter
-from .alignment import Alignment
+from .util import Alignment
 
 
 class A3M2ALIGN(Converter):

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .alignment import Alignment
+from .util import Alignment
 
 
 def plot_msa_coverage(
