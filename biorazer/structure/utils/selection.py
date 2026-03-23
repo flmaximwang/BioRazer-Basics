@@ -19,7 +19,10 @@ def normalize_selection(atom_array: bio_struct.AtomArray, selection):
         Boolean mask with the same shape as atom_array.
     """
 
-    if selection in [None, "all", "ALL"]:
+    if selection is None:
+        return np.ones(atom_array.shape, dtype=bool)
+
+    if isinstance(selection, str) and selection in {"all", "ALL"}:
         return np.ones(atom_array.shape, dtype=bool)
 
     mask = np.asarray(selection, dtype=bool)
