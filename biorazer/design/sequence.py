@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from abc import abstractmethod
 from pathlib import Path
 from collections import OrderedDict
+import pandas as pd
 from .basic import Entry, Library
 
 
@@ -15,18 +16,17 @@ class SequenceEntry(Entry):
     which can either contain a single string (for single-sequence design) or a dictionary of strings (for multi-sequence design).
     """
 
+    marker: str
+    dir_path: Path = None
     sequence: dict[str] = None
+    _samples: pd.DataFrame = None
 
     def get_basic_info(self):
-        sequence = self.get_samples().iloc[0]["sequence"]
+        sequence = self._samples.iloc[0]["sequence"]
         if isinstance(sequence, str):
             self.sequence = {"default": sequence}
         else:
-            self.sequence = self.get_samples().iloc[0]["sequence"]
-
-    def get_sequence(self) -> dict[str]:
-        self.sequence: dict[str]
-        return self.sequence
+            self.sequence = self._samples.iloc[0]["sequence"]
 
 
 class SequenceLibrary(Library):
@@ -37,7 +37,8 @@ class SequenceLibrary(Library):
 
     entry_type = SequenceEntry
 
-    def get_sequences(self):
+    @property
+    def sequences(self):
         """
         Write the sequences of all entries in the library to a FASTA file.
 
@@ -49,7 +50,7 @@ class SequenceLibrary(Library):
         self.entries: list[SequenceEntry]
         res = []
         for entry in self.entries:
-            seq_dict = entry.get_sequence()
+            seq_dict = entry.sequence
             for name, seq in seq_dict.items():
                 res.append((f"{entry.marker}_{name}", seq))
         res = OrderedDict(res)
