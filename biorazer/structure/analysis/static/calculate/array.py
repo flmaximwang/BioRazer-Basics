@@ -1,9 +1,9 @@
 import numpy as np
 import biotite.structure as bio_struct
-from . import report, select
+from .. import report, select
 
 
-def sasa_no_h(
+def sasa_array(
     atom_array: bio_struct.AtomArray,
     probe_radius=1.4,
     atom_filter=None,
@@ -11,10 +11,17 @@ def sasa_no_h(
     point_number=1000,
     point_distr="Fibonacci",
     vdw_radii="Single",
+    exclude_elements=["H"],
 ):
-    heavy_mask = atom_array.element != "H"
+    """
+    Calculate the solvent accessible surface area (SASA) of a structure, excluding atoms of specified elements.
+    SASA values are returned for all atoms, but the SASA of excluded atoms is set to zero.
+    """
+    exclude_mask_list = [atom_array.element == element for element in exclude_elements]
+    exclude_mask = np.logical_or.reduce(exclude_mask_list)
+    structure_excluded = atom_array[~exclude_mask]
     atom_sasa_tmp = bio_struct.sasa(
-        atom_array[heavy_mask],
+        structure_excluded,
         probe_radius=probe_radius,
         atom_filter=atom_filter,
         ignore_ions=ignore_ions,
@@ -23,7 +30,7 @@ def sasa_no_h(
         vdw_radii=vdw_radii,
     )
     atom_sasa = np.zeros(atom_array.shape, dtype=float)
-    atom_sasa[heavy_mask] = atom_sasa_tmp
+    atom_sasa[~exclude_mask] = atom_sasa_tmp
     return atom_sasa
 
 

@@ -2,13 +2,13 @@ import numpy as np
 from scipy.spatial import KDTree
 from biotite import structure as bio_struct
 from biorazer.display import print_with_decoration, print_decoration_line
-from biorazer.structure.utils.selection import normalize_selection
-from biorazer.structure.utils.report_utils import (
+from biorazer.structure.util.selection import normalize_selection
+from biorazer.structure.util.report_utils import (
     _format_atom_label,
     _normalize_interface_residues,
     _to_pymol_atom_selector,
 )
-from .utils import _normalize_fmt
+from .util import _normalize_fmt
 from .. import select
 
 

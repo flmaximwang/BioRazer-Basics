@@ -16,6 +16,8 @@ def _normalize_fmt(fmt, supported_formats):
     normalized_fmt = fmt.strip().lower()
     fmt_alias = {
         "txt": "text",
+        "lst": "list",
+        "table": "pandas",
     }
     normalized_fmt = fmt_alias.get(normalized_fmt, normalized_fmt)
 

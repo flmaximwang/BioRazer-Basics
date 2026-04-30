@@ -1,0 +1,23 @@
+AMINO_ACIDS_1LETTER = tuple("ACDEFGHIKLMNPQRSTVWY")
+AMINO_ACIDS_3LETTER = tuple(
+    "ALA",
+    "CYS",
+    "ASP",
+    "GLU",
+    "PHE",
+    "GLY",
+    "HIS",
+    "ILE",
+    "LYS",
+    "LEU",
+    "MET",
+    "ASN",
+    "PRO",
+    "GLN",
+    "ARG",
+    "SER",
+    "THR",
+    "VAL",
+    "TRP",
+    "TYR",
+)
