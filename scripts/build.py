@@ -16,9 +16,9 @@ LIBRARIES = ["m"]
 def build():
     extensions = [
         Extension(
-            "biorazer.structure.utils.geometry.sphere.fibonacci_sphere_grid",
+            "biorazer.structure.util.geometry.sphere.fibonacci_sphere_grid",
             sources=[
-                "biorazer/structure/utils/geometry/sphere/fibonacci_sphere_grid.pyx"
+                "biorazer/structure/util/geometry/sphere/fibonacci_sphere_grid.pyx"
             ],
             extra_compile_args=COMPILE_ARGS,
             extra_link_args=LINK_ARGS,
