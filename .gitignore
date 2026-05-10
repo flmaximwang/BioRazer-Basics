@@ -1,6 +1,18 @@
-.vscode/
-poetry.lock
+# Project files
 build
 test
+scratch
+
+# VS Code settings
+.vscode/
+
+# Poetry files
+poetry.lock
+
+# Python Cache
 __pycache__
+*.pyc
+
+# Cython
+*.pyd
 *.so

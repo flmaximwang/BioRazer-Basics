@@ -14,6 +14,8 @@ LIBRARIES = ["m"]
 
 
 def build():
+    cython_build_dir = Path("build") / "cython"
+
     extensions = [
         Extension(
             "biorazer.structure.util.geometry.sphere.fibonacci_sphere_grid",
@@ -26,7 +28,11 @@ def build():
             libraries=LIBRARIES,
         ),
     ]
-    ext_modules = cythonize(extensions, compiler_directives={"language_level": "3"})
+    ext_modules = cythonize(
+        extensions,
+        compiler_directives={"language_level": "3"},
+        build_dir=str(cython_build_dir),
+    )
 
     distribution = Distribution({"name": "biorazer", "ext_modules": ext_modules})
     cmd = build_ext(distribution)

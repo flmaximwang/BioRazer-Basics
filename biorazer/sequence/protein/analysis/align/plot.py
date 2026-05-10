@@ -1,3 +1,6 @@
+from biotite.sequence import ProteinSequence
+from biotite.sequence.align import Alignment, align_multiple, SubstitutionMatrix
+from biotite.sequence.graphics import plot_alignment_type_based, plot_alignment_similarity_based, plot_alignment
 import numpy as np
 import matplotlib.pyplot as plt
 from .util import Alignment
@@ -105,3 +108,84 @@ def plot_msa_coverage(
     plt.colorbar(label="Sequence identity to query")
     plt.xlabel("Positions")
     plt.ylabel("Sequences")
+
+def plot_msa(
+    sequences: list[str | ProteinSequence] = None,
+    msa: Alignment | None = None,
+    labels = None,
+    symbols_per_line = 50,
+    symbol_spacing = 10,
+    number_functions = None, 
+    msa_params: dict = {},
+    plot_method: str = "similarity",
+    plot_params: dict = {},
+    figsize=(10, 5),
+    
+    
+):
+    
+    """
+    Parameters
+    ----------
+    msa_params: dict
+        See https://www.biotite-python.org/latest/apidoc/biotite.sequence.align.align_multiple.html
+    number_functions: list[callable]
+        Example: [lambda i: i+0, lambda i: i+2] # Keep original and add 2 to the position numbers
+    plot_params: dict
+        See https://www.biotite-python.org/latest/apidoc/biotite.sequence.graphics.plot_alignment_similarity_based.html#biotite.sequence.graphics.plot_alignment_similarity_based
+        See https://www.biotite-python.org/latest/apidoc/biotite.sequence.graphics.plot_alignment_type_based.html#biotite.sequence.graphics.plot_alignment_type_based
+        See https://www.biotite-python.org/latest/apidoc/biotite.sequence.graphics.plot_alignment.html#biotite.sequence.graphics.plot_alignment
+    """
+    
+    method_map = {
+        "similarity": plot_alignment_similarity_based,
+        "type": plot_alignment_type_based,
+        "default": plot_alignment,
+    }
+
+    # Check Input
+    if msa is None and sequences is None:
+        raise ValueError("Either 'sequences' or 'msa' must be provided.")
+    if msa is not None and sequences is not None:
+        raise ValueError("Only one of 'sequences' or 'msa' should be provided.")
+    if plot_method not in method_map:
+        raise ValueError(f"Invalid plot_method '{plot_method}'. Valid options are: {list(method_map.keys())}")
+    
+    # Format Input
+    if labels is None:
+        labels = [f"{i+1}" for i in range(len(sequences))]
+        plot_params["labels"] = labels
+    plot_params["labels"] = labels
+    plot_params["symbols_per_line"] = symbols_per_line
+    plot_params["symbol_spacing"] = symbol_spacing
+    plot_params["show_numbers"] = True
+    plot_params["number_functions"] = number_functions
+    
+    formatted_sequences = []
+    for sequence in sequences:
+        if isinstance(sequence, str):
+            formatted_sequences.append(ProteinSequence(sequence))
+        elif isinstance(sequence, ProteinSequence):
+            formatted_sequences.append(sequence)
+        else:
+            raise ValueError("Each item in 'sequences' must be either a string or a ProteinSequence.")
+    print(formatted_sequences)
+        
+    
+    # Get MSA
+    if msa is not None:
+        return msa
+    else:
+        
+        msa, order, tree, distance_matrix = align_multiple(formatted_sequences, SubstitutionMatrix.std_protein_matrix(), **(msa_params or {}))
+    
+    plot_func = method_map[plot_method]
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    
+    
+    plot_func(ax, msa, **plot_params)
+    
+    return fig, ax
+    
+    
+   
