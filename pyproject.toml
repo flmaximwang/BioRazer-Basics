@@ -20,6 +20,7 @@ numpy = "^2"
 hydride = "^1.2.3"
 umap-learn = "^0.5.9.post2"
 rcsb-api = "^1.4.2"
+matplotlib
 
 [tool.poetry.group.dev.dependencies]
 cython = "^0.29.0"
