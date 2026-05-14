@@ -5,6 +5,7 @@ from xml.etree import ElementTree as ET
 from html import unescape
 from ..logger import initialize_logger
 
+
 @dataclass
 class PDBStructure:
     pdb_code: str = None
@@ -34,6 +35,9 @@ class PDBStructure:
             if logger:
                 logger.info(f"{self.pdb_code}.{fmt} downloaded to {folder_dir}")
 
-def fetch(pdb_code: str, fmt="pdb", folder_dir=".", overwrite=False, logger=None):
+
+def fetch(pdb_code: str, fmt="pdb", download_dir=".", overwrite=False, logger=None):
     structure = PDBStructure(pdb_code)
-    structure.download(fmt=fmt, folder_dir=folder_dir, overwrite=overwrite, logger=logger)
+    structure.download(
+        fmt=fmt, folder_dir=download_dir, overwrite=overwrite, logger=logger
+    )
