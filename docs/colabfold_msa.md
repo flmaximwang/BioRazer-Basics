@@ -13,23 +13,24 @@
 ```python
 from biorazer.sequence.protein.analysis.align.query import run_search
 
-files, tmpl_map = run_search(
-    ["MTSENLYFQGAMGSMTSENLYFQGAMG"],
+result = run_search(
+    [("my_protein", "MTSENLYFQGAMGSMTSENLYFQGAMG")],
     "msa_out/",
 )
-print(files)  # ['msa_out/uniref.a3m', ...]
+# result.per_seq["my_protein"].files   -> ['msa_out/my_protein/uniref.a3m', ...]
+# result.per_seq["my_protein"].plots   -> ['msa_out/my_protein/logo.png']
 ```
 
 ### 多链配对 MSA（用于 AF3 / OpenDDE 多聚体）
 
 ```python
-files, tmpl_map = run_search(
-    ["EVQLVESGGGLVQPGGSLRLSCAASGFTFS",   # 重链
-     "DIQMTQSPSSLSASVGDRVTITCRASQGIR"],   # 轻链
-    "msa_out/",
+result = run_search(
+    [("heavy", "EVQLVESGGGLVQPGGSLRLSCAASGFTFS"),   # 重链
+     ("light", "DIQMTQSPSSLSASVGDRVTITCRASQGIR")],   # 轻链
+    "ab_msa/",
     pair_mode="paired",
 )
-# 输出: pair.a3m (配对 MSA)
+# 输出: ab_msa/heavy/pair.a3m, ab_msa/light/pair.a3m
 ```
 
 ### 从 FASTA 文件读取
@@ -38,9 +39,9 @@ files, tmpl_map = run_search(
 from biorazer.sequence.protein.analysis.align.query import parse_fasta, run_search
 
 with open("input.fasta") as f:
-    seqs = parse_fasta(f.read())
+    named_seqs = parse_fasta(f.read())
 
-files, tmpl_map = run_search(seqs, "msa_out/", pair_mode="paired" if len(seqs) > 1 else "unpaired")
+result = run_search(named_seqs, "msa_out/")
 ```
 
 ---
@@ -53,7 +54,7 @@ files, tmpl_map = run_search(seqs, "msa_out/", pair_mode="paired" if len(seqs) >
 
 ```python
 run_search(
-    seqs: List[str],
+    named_seqs: List[Tuple[str, str]],
     out_dir: str,
     pair_mode: str = "unpaired",
     use_env: bool = True,
@@ -61,16 +62,16 @@ run_search(
     host: str = "https://api.colabfold.com",
     ua: str = "colabfold_msa/2.0 ...",
     pair_strategy: str = "greedy",
-) -> Tuple[List[str], Optional[dict]]
+) -> SearchResult
 ```
 
 **参数说明**
 
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `seqs` | `List[str]` | 必填 | 蛋白序列列表（多链时每链一条） |
+| `named_seqs` | `List[Tuple[str, str]]` | 必填 | (名称, 序列) 列表 |
 | `out_dir` | `str` | 必填 | 输出目录（自动创建） |
-|| `pair_mode` | `str` | `"unpaired"` | 配对模式: `"unpaired"` / `"paired"` / `"paired+unpaired"` |
+| `pair_mode` | `str` | `"unpaired"` | `"unpaired"` / `"paired"` / `"paired+unpaired"` |
 | `use_env` | `bool` | `True` | 是否使用环境数据库 (BFD/MGnify) |
 | `use_filter` | `bool` | `True` | 是否过滤 MSA 结果 |
 | `host` | `str` | `https://api.colabfold.com` | MMseqs2 服务器地址 |
@@ -79,45 +80,41 @@ run_search(
 
 **返回值**
 
-- `files`: 生成的 A3M 文件路径列表
-  - 单链: `[uniref.a3m]` (+ 可选 `bfd.mgnify30.*.a3m`)
-  - 配对: `[pair.a3m]`
-- `tmpl_map`: PDB 模板映射 `{序列索引: [pdb_id, ...]}`，无模板则返回 `None`
-
-**mode 对应关系**
-
-| pair_mode | use_filter | use_env | 实际 mode |
-|-----------|------------|---------|-----------|
-| `unpaired` | True | True | `env` |
-| `unpaired` | True | False | `all` |
-| `unpaired` | False | True | `env-nofilter` |
-| `unpaired` | False | False | `nofilter` |
-| `paired` | — | True | `pairgreedy-env` / `paircomplete-env` |
-| `paired` | — | False | `pairgreedy` / `paircomplete` |
-| `paired+unpaired` | — | — | 同时执行上述 unpaired + paired |
+```python
+SearchResult(
+    per_seq = {
+        "my_protein": SeqResult(
+            files=["msa_out/my_protein/uniref.a3m", "msa_out/my_protein/merged.a3m"],
+            plots=["msa_out/my_protein/logo.png"],
+            report=""
+        ),
+    },
+    merged="msa_out/merged.a3m",       # 所有链×数据库合并
+    templates={101: ["1abc", ...]},     # PDB 模板映射
+)
+```
 
 ### `parse_fasta()`
 
-解析 FASTA 文本，返回序列列表。
+解析 FASTA 文本，返回 `[(名称, 序列), ...]`。
 
 ```python
-parse_fasta(text: str) -> List[str]
+parse_fasta(text: str) -> List[Tuple[str, str]]
 ```
 
 - 跳过空行和注释
 - 自动大写
 - 支持多条序列
+- 裸字符串输入 → `[("default", 序列)]`
+- header 取第一个空白前的部分（`>my_protein something` → `"my_protein"`）
 
 ### `validate()`
 
 验证序列只含 20 种标准氨基酸字符 (`ACDEFGHIKLMNPQRSTVWY`)。
 
 ```python
-validate(seqs: List[str]) -> None
+validate(seqs: List[Tuple[str, str]]) -> None
 ```
-
-- 非法字符时打印错误到 stderr 并 `sys.exit(1)`
-- 通常在提交前调用
 
 ### `merge_a3m()`
 
@@ -129,108 +126,38 @@ merge_a3m(file_list: List[str]) -> str
 
 ---
 
-## 完整流程示例：单链 MSA + 可视化
-
-```python
-from biorazer.sequence.protein.analysis.align.query import run_search, validate
-from biorazer.sequence.protein.scripts.MSA_visualizer import read_a3m, plot_msa
-
-# 1. 定义序列
-seq = "MTSENLYFQGAMGSMTSENLYFQGAMG"
-validate([seq])
-
-# 2. 生成 MSA
-files, _ = run_search([seq], "msa_out/")
-
-# 3. 读取生成的 A3M
-msa = read_a3m(files[0])
-
-# 4. 可视化 coverage
-plt = plot_msa(msa, seq_len_list=[len(seq)])
-plt.savefig("coverage.png")
-```
-
----
-
-## 多链流程示例：配对抗体 MSA
-
-```python
-from biorazer.sequence.protein.analysis.align.query import run_search, merge_a3m, parse_fasta
-
-heavy = "EVQLVESGGGLVQPGGSLRLSCAASGFTFS"
-light = "DIQMTQSPSSLSASVGDRVTITCRASQGIR"
-
-files, tmpl_map = run_search(
-    [heavy, light],
-    "ab_msa/",
-    pair_mode="paired",
-    use_env=True,
-)
-
-# paired 模式下输出: ab_msa/pair.a3m
-
-with open("ab_unpaired.a3m", "w") as f:
-    f.write(merge_a3m(files))
-```
-
----
-
-## 模板下载
-
-```python
-files, tmpl_map = run_search(
-    [seq],
-    "msa_with_templates/",
-    use_env=True,
-)
-
-if tmpl_map:
-    from biorazer.sequence.protein.analysis.align.query.colabfold_api import _write_templates
-    tpl_dir = _write_templates(tmpl_map, "msa_with_templates/",
-                                host="https://api.colabfold.com",
-                                ua="colabfold_msa/2.0")
-    print(f"Templates: {tpl_dir}")
-```
-
-> `_write_templates()` 是私有函数，当前版本需直接导入。后续版本将开放为公共 API。
-
----
-
-## 自建 MMseqs2 服务器
-
-如果部署了自己的 MMseqs2 API 服务器，通过 `host` 参数指定：
-
-```python
-files, _ = run_search([seq], "msa_out/",
-                       host="http://localhost:8080")
-```
-
----
-
 ## 输出目录结构
 
 ### 单链
 
 ```
 msa_out/
-├── uniref.a3m                    # UniRef30 搜索结果
-├── bfd.mgnify30.metaeuk30.smag30.a3m  # 环境数据库 (use_env=True)
-├── out.tar.gz                    # 原始下载缓存
-└── pdb70.m8                      # 模板搜索结果（如有）
+├── my_protein/
+│   ├── uniref.a3m                    # UniRef30 搜索结果
+│   ├── bfd.mgnify30.metaeuk30.smag30.a3m  # 环境数据库 (use_env=True)
+│   ├── merged.a3m                    # 该链所有数据库合并
+│   └── logo.png                      # sequence logo
+├── merged.a3m                        # 所有链×所有数据库合并
+└── pdb70.m8                          # 模板搜索结果（如有）
 ```
 
-### 多链配对
+### 多链（unpaired）
 
 ```
 msa_out/
-├── unpaired/                     # unpaired MSA 子目录
+├── chain_A/
 │   ├── uniref.a3m
-│   └── out.tar.gz
-├── paired/                       # paired MSA 子目录
-│   └── out.tar.gz
-├── unpaired.a3m                  # 合并后的 unpaired
-├── paired.a3m                    # 合并后的 paired
-└── templates/                    # 模板文件（--templates 时）
+│   ├── bfd.mgnify30.*.a3m
+│   ├── merged.a3m
+│   └── logo.png
+├── chain_B/
+│   ├── uniref.a3m
+│   ├── bfd.mgnify30.*.a3m
+│   ├── merged.a3m
+│   └── logo.png
+├── merged.a3m
+├── templates/                        # 模板文件
+└── pdb70.m8
 ```
 
 ---
@@ -241,7 +168,6 @@ msa_out/
 - HTTP 错误（连接超时、5xx）自动指数退避重试（最大 10 次，2s → 60s）
 - 任务 3 次超时后放弃，递增 seed 重新提交
 - 公共服务器 `api.colabfold.com` 有匿名速率限制，建议请求间隔至少 5s
-- 缓存检测：如果 `out.tar.gz` 已存在则跳过提交
 
 ---
 
@@ -250,7 +176,7 @@ msa_out/
 ```
 biorazer/sequence/protein/analysis/align/
 ├── query/               ← 本模块: MSA 生成（调用 ColabFold API）
-├── io.py                ← 读取 A3M 文件
+├── io.py                ← 读取 A3M 文件（A3M2ALIGN → biotite Alignment）
 ├── plot.py              ← 可视化 MSA（coverage + 序列比对图）
 ├── report.py            ← MSA 分析报告
 └── util.py              ← 对齐工具函数
@@ -268,7 +194,9 @@ biorazer/sequence/protein/analysis/align/
 ## 注意
 
 1. **网络要求**：需要访问 `https://api.colabfold.com`（境外服务），建议在校园网 / 代理下使用
-2. **无 CUDA 要求**：所有计算在远端完成，本地只需 Python stdlib
+2. **无 CUDA 要求**：所有计算在远端完成，本地只需 Python stdlib + matplotlib + biotite
 3. **A3M 格式**：结果为大写字母（匹配）+ 小写字母（插入）+ `-`（缺失），读取时注意小写 → `-` 转换
-4. **序列去重**：内部已做 `dict.fromkeys()` 去重，重复序列只提交一次
-5. **配对策略**：`greedy` 快但可能不是最优配对，`complete` 慢但完整
+4. **序列名称**：从 FASTA header 第一个空白前提取，裸序列命名为 `"default"`
+5. **tar.gz**：解压后自动删除
+6. **Sequence logo**：使用 biotite 的 `SequenceProfile` + `plot_sequence_logo` 自动生成
+7. **配对策略**：`greedy` 快但可能不是最优配对，`complete` 慢但完整

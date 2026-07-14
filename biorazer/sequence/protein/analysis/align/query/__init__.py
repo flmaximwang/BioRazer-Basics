@@ -5,6 +5,8 @@ from .colabfold_api import (
     parse_fasta,
     validate,
     merge_a3m,
+    SeqResult,
+    SearchResult,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "parse_fasta",
     "validate",
     "merge_a3m",
+    "SeqResult",
+    "SearchResult",
 ]

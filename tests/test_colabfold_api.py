@@ -10,81 +10,96 @@ from biorazer.sequence.protein.analysis.align.query.colabfold_api import (
     parse_fasta,
     validate,
     merge_a3m,
+    SeqResult,
+    SearchResult,
 )
 
 
 class TestParseFasta:
     def test_single_sequence(self):
         text = ">seq1\nMTSENLYFQG\n"
-        assert parse_fasta(text) == ["MTSENLYFQG"]
+        assert parse_fasta(text) == [("seq1", "MTSENLYFQG")]
 
     def test_multiple_sequences(self):
         text = ">seq1\nMTSENLYFQG\n>seq2\nACDEFGHIK\n>seq3\nWPKL\n"
-        assert parse_fasta(text) == ["MTSENLYFQG", "ACDEFGHIK", "WPKL"]
+        assert parse_fasta(text) == [
+            ("seq1", "MTSENLYFQG"),
+            ("seq2", "ACDEFGHIK"),
+            ("seq3", "WPKL"),
+        ]
 
     def test_sequence_with_description(self):
         text = ">seq1 some description\nMTSENLYFQG\n"
-        assert parse_fasta(text) == ["MTSENLYFQG"]
+        assert parse_fasta(text) == [("seq1", "MTSENLYFQG")]
 
     def test_multi_line_fasta(self):
         text = ">seq1\nMTSEN\nLYFQG\n"
-        assert parse_fasta(text) == ["MTSENLYFQG"]
+        assert parse_fasta(text) == [("seq1", "MTSENLYFQG")]
 
     def test_empty(self):
         assert parse_fasta("") == []
         assert parse_fasta("   \n\n") == []
 
     def test_no_header(self):
-        assert parse_fasta("MTSENLYFQG") == ["MTSENLYFQG"]
+        assert parse_fasta("MTSENLYFQG") == [("default", "MTSENLYFQG")]
 
     def test_uppercase_conversion(self):
         text = ">seq1\nmtsenlyfqg\n"
-        assert parse_fasta(text) == ["MTSENLYFQG"]
+        assert parse_fasta(text) == [("seq1", "MTSENLYFQG")]
 
     def test_empty_sequence_after_header(self):
         text = ">seq1\n>seq2\nMTS\n"
-        assert parse_fasta(text) == ["MTS"]
+        assert parse_fasta(text) == [("seq2", "MTS")]
 
     def test_trailing_newline(self):
         text = ">seq1\nMTSENLYFQG\n\n"
-        assert parse_fasta(text) == ["MTSENLYFQG"]
+        assert parse_fasta(text) == [("seq1", "MTSENLYFQG")]
+
+    def test_header_with_spaces(self):
+        """取 header 第一个空白前的部分"""
+        text = ">my_protein something else\nMTSEN\n"
+        assert parse_fasta(text) == [("my_protein", "MTSEN")]
+
+    def test_empty_header(self):
+        text = ">\nMTSEN\n"
+        assert parse_fasta(text) == [("default", "MTSEN")]
 
 
 class TestValidate:
     def test_valid_standard(self):
-        validate(["MTSENLYFQG", "ACDEFGHIK"])  # should not raise/exit
+        validate([("seq1", "MTSENLYFQG"), ("seq2", "ACDEFGHIK")])
 
     def test_valid_single_aa(self):
-        validate(["A"])
-        validate(["C"])
-        validate(["Y"])
+        validate([("a", "A")])
+        validate([("c", "C")])
+        validate([("y", "Y")])
 
     def test_valid_with_all_standard_aas(self):
         all_aas = "ACDEFGHIKLMNPQRSTVWY"
-        validate([all_aas])
+        validate([("all", all_aas)])
 
     def test_lowercase_is_valid(self):
         """内部做了 .upper()，小写字母合法。"""
-        validate(["mtsenlyfqg"])
+        validate([("low", "mtsenlyfqg")])
 
     def test_invalid_character_exits(self):
         with pytest.raises(SystemExit):
-            validate(["MTSENLXFQG"])  # X 不是标准氨基酸
+            validate([("bad", "MTSENLXFQG")])  # X 不是标准氨基酸
 
     def test_empty_string_is_valid(self):
-        validate([""])
+        validate([("empty", "")])
 
     def test_mixed_valid_and_invalid(self):
         with pytest.raises(SystemExit):
-            validate(["MTSENLYFQG", "ACD*FGHIK"])  # * 非法
+            validate([("good", "MTSENLYFQG"), ("bad", "ACD*FGHIK")])  # * 非法
 
     def test_multiple_invalid_sequences(self):
         with pytest.raises(SystemExit):
-            validate(["MTS", "ABC", "BAD1SEQ"])
+            validate([("a", "MTS"), ("b", "ABC"), ("c", "BAD1SEQ")])
 
     def test_numeric_character_exits(self):
         with pytest.raises(SystemExit):
-            validate(["MTS3NLYFQG"])
+            validate([("num", "MTS3NLYFQG")])
 
 
 class TestMergeA3M:
