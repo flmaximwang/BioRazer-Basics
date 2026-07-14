@@ -136,7 +136,10 @@ msa_out/
 │   ├── uniref.a3m                    # UniRef30 搜索结果
 │   ├── bfd.mgnify30.metaeuk30.smag30.a3m  # 环境数据库 (use_env=True)
 │   ├── merged.a3m                    # 该链所有数据库合并
-│   └── logo.png                      # sequence logo
+│   ├── logo.png                      # sequence logo (50 AA/行, 10 AA/刻度)
+│   ├── coverage.png                  # coverage 热图
+│   ├── pdb70.m8                      # 该链的模板搜索结果
+│   └── templates/                    # 该链的模板 PDB 文件
 ├── merged.a3m                        # 所有链×所有数据库合并
 └── pdb70.m8                          # 模板搜索结果（如有）
 ```
@@ -149,12 +152,18 @@ msa_out/
 │   ├── uniref.a3m
 │   ├── bfd.mgnify30.*.a3m
 │   ├── merged.a3m
-│   └── logo.png
+│   ├── logo.png
+│   ├── coverage.png
+│   ├── pdb70.m8
+│   └── templates/
 ├── chain_B/
 │   ├── uniref.a3m
 │   ├── bfd.mgnify30.*.a3m
 │   ├── merged.a3m
-│   └── logo.png
+│   ├── logo.png
+│   ├── coverage.png
+│   ├── pdb70.m8
+│   └── templates/
 ├── merged.a3m
 ├── templates/                        # 模板文件
 └── pdb70.m8
