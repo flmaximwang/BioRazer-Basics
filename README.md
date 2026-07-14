@@ -42,18 +42,17 @@ Generate protein MSA by calling the ColabFold public API — zero additional dep
 ```python
 from biorazer.sequence.protein.analysis.align.query import run_search
 
-# Single-chain MSA
+# Single-chain MSA (unpaired, default)
 files, _ = run_search(
     ["MTSENLYFQGAMG..."],
     out_dir="msa_out/",
-    paired=False,
 )
 
 # Multi-chain paired MSA (for AF3 multimers)
 files, _ = run_search(
     ["CHAIN1_SEQUENCE", "CHAIN2_SEQUENCE"],
     out_dir="msa_out/",
-    paired=True,
+    pair_mode="paired",
     pair_strategy="greedy",   # or "complete"
 )
 ```

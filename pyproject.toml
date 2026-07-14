@@ -31,3 +31,6 @@ pytest-cov = "^5.0"
 
 [tool.poetry.build]
 script = "scripts/build.py"
+
+[tool.poetry.scripts]
+biorazer = "biorazer.cli:main"

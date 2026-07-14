@@ -16,7 +16,6 @@ from biorazer.sequence.protein.analysis.align.query import run_search
 files, tmpl_map = run_search(
     ["MTSENLYFQGAMGSMTSENLYFQGAMG"],
     "msa_out/",
-    paired=False,
 )
 print(files)  # ['msa_out/uniref.a3m', ...]
 ```
@@ -28,9 +27,9 @@ files, tmpl_map = run_search(
     ["EVQLVESGGGLVQPGGSLRLSCAASGFTFS",   # 重链
      "DIQMTQSPSSLSASVGDRVTITCRASQGIR"],   # 轻链
     "msa_out/",
-    paired=True,
+    pair_mode="paired",
 )
-# 输出包含 unpaired.a3m + paired.a3m
+# 输出: pair.a3m (配对 MSA)
 ```
 
 ### 从 FASTA 文件读取
@@ -41,7 +40,7 @@ from biorazer.sequence.protein.analysis.align.query import parse_fasta, run_sear
 with open("input.fasta") as f:
     seqs = parse_fasta(f.read())
 
-files, tmpl_map = run_search(seqs, "msa_out/", paired=len(seqs) > 1)
+files, tmpl_map = run_search(seqs, "msa_out/", pair_mode="paired" if len(seqs) > 1 else "unpaired")
 ```
 
 ---
@@ -56,7 +55,7 @@ files, tmpl_map = run_search(seqs, "msa_out/", paired=len(seqs) > 1)
 run_search(
     seqs: List[str],
     out_dir: str,
-    paired: bool,
+    pair_mode: str = "unpaired",
     use_env: bool = True,
     use_filter: bool = True,
     host: str = "https://api.colabfold.com",
@@ -71,7 +70,7 @@ run_search(
 |------|------|------|------|
 | `seqs` | `List[str]` | 必填 | 蛋白序列列表（多链时每链一条） |
 | `out_dir` | `str` | 必填 | 输出目录（自动创建） |
-| `paired` | `bool` | 必填 | 多链时是否做配对搜索 |
+|| `pair_mode` | `str` | `"unpaired"` | 配对模式: `"unpaired"` / `"paired"` / `"paired+unpaired"` |
 | `use_env` | `bool` | `True` | 是否使用环境数据库 (BFD/MGnify) |
 | `use_filter` | `bool` | `True` | 是否过滤 MSA 结果 |
 | `host` | `str` | `https://api.colabfold.com` | MMseqs2 服务器地址 |
@@ -87,14 +86,15 @@ run_search(
 
 **mode 对应关系**
 
-| paired | use_filter | use_env | 实际 mode |
-|--------|------------|---------|-----------|
-| False  | True       | True    | `env` |
-| False  | True       | False   | `all` |
-| False  | False      | True    | `env-nofilter` |
-| False  | False      | False   | `nofilter` |
-| True   | —          | True    | `pairgreedy-env` / `paircomplete-env` |
-| True   | —          | False   | `pairgreedy` / `paircomplete` |
+| pair_mode | use_filter | use_env | 实际 mode |
+|-----------|------------|---------|-----------|
+| `unpaired` | True | True | `env` |
+| `unpaired` | True | False | `all` |
+| `unpaired` | False | True | `env-nofilter` |
+| `unpaired` | False | False | `nofilter` |
+| `paired` | — | True | `pairgreedy-env` / `paircomplete-env` |
+| `paired` | — | False | `pairgreedy` / `paircomplete` |
+| `paired+unpaired` | — | — | 同时执行上述 unpaired + paired |
 
 ### `parse_fasta()`
 
@@ -140,7 +140,7 @@ seq = "MTSENLYFQGAMGSMTSENLYFQGAMG"
 validate([seq])
 
 # 2. 生成 MSA
-files, _ = run_search([seq], "msa_out/", paired=False)
+files, _ = run_search([seq], "msa_out/")
 
 # 3. 读取生成的 A3M
 msa = read_a3m(files[0])
@@ -163,12 +163,11 @@ light = "DIQMTQSPSSLSASVGDRVTITCRASQGIR"
 files, tmpl_map = run_search(
     [heavy, light],
     "ab_msa/",
-    paired=True,
+    pair_mode="paired",
     use_env=True,
 )
 
-# 多链时默认生成: ab_msa/unpaired/  +  ab_msa/paired/
-# 自动合并为 unpaired.a3m + paired.a3m
+# paired 模式下输出: ab_msa/pair.a3m
 
 with open("ab_unpaired.a3m", "w") as f:
     f.write(merge_a3m(files))
@@ -182,7 +181,6 @@ with open("ab_unpaired.a3m", "w") as f:
 files, tmpl_map = run_search(
     [seq],
     "msa_with_templates/",
-    paired=False,
     use_env=True,
 )
 
@@ -203,7 +201,7 @@ if tmpl_map:
 如果部署了自己的 MMseqs2 API 服务器，通过 `host` 参数指定：
 
 ```python
-files, _ = run_search([seq], "msa_out/", paired=False,
+files, _ = run_search([seq], "msa_out/",
                        host="http://localhost:8080")
 ```
 

@@ -3,10 +3,16 @@ colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
 
 单链:
   from biorazer.sequence.protein.analysis.align.query import run_search
-  files, tmpl_map = run_search(["MTSENLYFQG..."], "msa_out/", paired=False)
+  files, tmpl_map = run_search(["MTSENLYFQG..."], "msa_out/")
 
-多链 (配对, 用于 OpenDDE/AF3 多聚体):
-  files, tmpl_map = run_search(["CHAIN1", "CHAIN2"], "msa_out/", paired=True)
+多链 (unpaired, 各链独立搜索):
+  files, tmpl_map = run_search(["CHAIN1", "CHAIN2"], "msa_out/")
+
+多链 (paired, 用于 OpenDDE/AF3 多聚体):
+  files, tmpl_map = run_search(["CHAIN1", "CHAIN2"], "msa_out/", pair_mode="paired")
+
+多链 (paired+unpaired, 两者同时生成):
+  files, tmpl_map = run_search(["CHAIN1", "CHAIN2"], "msa_out/", pair_mode="paired+unpaired")
 
 输出:
   msa_out/
@@ -16,6 +22,7 @@ colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
     └── pdb70.m8              (模板搜索结果)
 """
 
+import argparse
 import json
 import os
 import random
@@ -102,6 +109,54 @@ def _download_ticket(ticket_id: str, out_path: str, host: str, ua: str) -> None:
     raise RuntimeError("下载失败，已达最大重试次数")
 
 
+def _submit_and_download(seqs: List[str], out_dir: str,
+                         endpoint: str, mode: str,
+                         host: str, ua: str,
+                         tar_name: str = "out.tar.gz") -> str:
+    """提交 → 轮询 → 下载，完整流水线。返回 tar_gz 路径。"""
+    tar_gz = os.path.join(out_dir, tar_name)
+
+    if os.path.isfile(tar_gz):
+        print(f"  [✓] 缓存: {tar_gz}", file=sys.stderr)
+        return tar_gz
+
+    print(f"  [→] 提交 {len(seqs)} 条序列 [mode={mode}]...", file=sys.stderr)
+    N = 101
+    timeout_count = 0
+    while True:
+        out = _submit(seqs, host, endpoint, mode, ua, N)
+
+        # 速率限制 / 未知 → 等待后重提
+        while out.get("status") in ("UNKNOWN", "RATELIMIT"):
+            s = 5 + random.randint(0, 5)
+            print(f"  [!] {out['status']}，等待 {s}s 后重提...", file=sys.stderr)
+            time.sleep(s)
+            out = _submit(seqs, host, endpoint, mode, ua, N)
+
+        if out.get("status") == "ERROR":
+            raise RuntimeError("MMseqs2 API 返回 ERROR")
+        if out.get("status") == "MAINTENANCE":
+            raise RuntimeError("MMseqs2 API 维护中，稍后再试")
+
+        tid = out["id"]
+        stat = out
+        while stat.get("status") in ("UNKNOWN", "RUNNING", "PENDING"):
+            time.sleep(5 + random.randint(0, 5))
+            stat = _poll(tid, host, ua)
+
+        if stat.get("status") == "COMPLETE":
+            _download_ticket(tid, tar_gz, host, ua)
+            return tar_gz
+        elif stat.get("status") == "ERROR":
+            timeout_count += 1
+            if timeout_count >= 3:
+                raise RuntimeError("MMseqs2 任务 3 次超时，放弃重试")
+            print(f"  [!] 任务出错/超时 (尝试 {timeout_count}/3)，递增种子重提...",
+                  file=sys.stderr)
+            N += 1
+            continue
+
+
 def _write_templates(templates_map: dict, out_dir: str,
                      host: str, ua: str) -> str:
     """
@@ -158,7 +213,8 @@ def _write_templates(templates_map: dict, out_dir: str,
     return tpl_dir
 
 
-def run_search(seqs: List[str], out_dir: str, paired: bool,
+def run_search(seqs: List[str], out_dir: str,
+               pair_mode: str = "unpaired",
                use_env: bool = True, use_filter: bool = True,
                host: str = DEFAULT_HOST, ua: str = DEFAULT_UA,
                pair_strategy: str = "greedy") -> Tuple[List[str], Optional[dict]]:
@@ -172,8 +228,9 @@ def run_search(seqs: List[str], out_dir: str, paired: bool,
         蛋白序列列表（多链时为各链序列）
     out_dir : str
         输出目录
-    paired : bool
-        是否做配对 MSA（多链多聚体）
+    pair_mode : str
+        配对模式: "unpaired"（单链独立搜）、"paired"（仅配对 MSA）、
+        "paired+unpaired"（两者同时生成）
     use_env : bool
         是否使用环境数据库 (BFD/MGnify)，默认 True
     use_filter : bool
@@ -187,98 +244,72 @@ def run_search(seqs: List[str], out_dir: str, paired: bool,
     """
     os.makedirs(out_dir, exist_ok=True)
 
-    # 确定 endpoint 和 mode
-    if paired:
-        endpoint = "ticket/pair"
-        if pair_strategy == "complete":
-            mode = "paircomplete"
-        else:
-            mode = "pairgreedy"
-        if use_env:
-            mode += "-env"
-    else:
-        endpoint = "ticket/msa"
+    # ── 确定 endpoint / mode ──────────────────────────
+    def _unpaired_mode() -> str:
         if use_filter:
-            mode = "env" if use_env else "all"
-        else:
-            mode = "env-nofilter" if use_env else "nofilter"
+            return "env" if use_env else "all"
+        return "env-nofilter" if use_env else "nofilter"
 
-    tar_gz = os.path.join(out_dir, "out.tar.gz")
+    def _paired_mode() -> str:
+        m = "paircomplete" if pair_strategy == "complete" else "pairgreedy"
+        return m + "-env" if use_env else m
 
-    if os.path.isfile(tar_gz):
-        print(f"  [✓] 缓存: {tar_gz}", file=sys.stderr)
-    else:
-        print(f"  [→] 提交 {len(seqs)} 条序列 [mode={mode}]...", file=sys.stderr)
-        N = 101
-        timeout_count = 0
-        while True:
-            out = _submit(seqs, host, endpoint, mode, ua, N)
-
-            # 速率限制 / 未知 → 等待后重提
-            while out.get("status") in ("UNKNOWN", "RATELIMIT"):
-                s = 5 + random.randint(0, 5)
-                print(f"  [!] {out['status']}，等待 {s}s 后重提...", file=sys.stderr)
-                time.sleep(s)
-                out = _submit(seqs, host, endpoint, mode, ua, N)
-
-            if out.get("status") == "ERROR":
-                raise RuntimeError("MMseqs2 API 返回 ERROR")
-            if out.get("status") == "MAINTENANCE":
-                raise RuntimeError("MMseqs2 API 维护中，稍后再试")
-
-            tid = out["id"]
-            stat = out
-            job_time = 0
-            while stat.get("status") in ("UNKNOWN", "RUNNING", "PENDING"):
-                time.sleep(5 + random.randint(0, 5))
-                stat = _poll(tid, host, ua)
-                job_time += 5 + random.randint(0, 5)
-
-            if stat.get("status") == "COMPLETE":
-                _download_ticket(tid, tar_gz, host, ua)
-                break
-            elif stat.get("status") == "ERROR":
-                # 超时未完成 → 递增种子重试
-                timeout_count += 1
-                if timeout_count >= 3:
-                    raise RuntimeError("MMseqs2 任务 3 次超时，放弃重试")
-                print(f"  [!] 任务出错/超时 (尝试 {timeout_count}/3)，递增种子重提...",
-                      file=sys.stderr)
-                N += 1
-                continue
-
-    # 解压 A3M 文件
-    if paired:
-        need_names = ["pair.a3m"]
-    else:
-        need_names = ["uniref.a3m"]
-        if use_env:
-            need_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
-
-    need = [os.path.join(out_dir, n) for n in need_names]
-    missing = [f for f in need if not os.path.isfile(f)]
-    if missing:
+    def _extract_tar(tar_gz: str) -> None:
+        """解压 tar.gz 到 out_dir（如尚未提取）"""
         if not os.path.isfile(tar_gz):
             raise FileNotFoundError(f"缓存 tar.gz 不存在: {tar_gz}")
         with tarfile.open(tar_gz) as tar:
             tar.extractall(out_dir)
 
-    # 检查是否生成 pdb70.m8（模板搜索结果，解压后也存在 tar 中）
-    pdb70_m8 = os.path.join(out_dir, "pdb70.m8")
-    templates_map = None
-    if os.path.isfile(pdb70_m8):
-        templates_map = {}
+    def _parse_templates() -> Optional[dict]:
+        """从 pdb70.m8 解析模板映射"""
+        pdb70_m8 = os.path.join(out_dir, "pdb70.m8")
+        if not os.path.isfile(pdb70_m8):
+            return None
+        tmpl = {}
         with open(pdb70_m8) as f:
             for line in f:
                 parts = line.rstrip().split()
                 if len(parts) >= 4:
                     M = int(parts[0])
                     pdb = parts[1]
-                    if M not in templates_map:
-                        templates_map[M] = []
-                    templates_map[M].append(pdb)
+                    tmpl.setdefault(M, []).append(pdb)
+        return tmpl
 
-    found = [f for f in need if os.path.isfile(f)]
+    if pair_mode == "paired":
+        _submit_and_download(seqs, out_dir, "ticket/pair",
+                             _paired_mode(), host, ua,
+                             tar_name="out_paired.tar.gz")
+        _extract_tar(os.path.join(out_dir, "out_paired.tar.gz"))
+        need_names = ["pair.a3m"]
+
+    elif pair_mode == "paired+unpaired":
+        # unpaired
+        _submit_and_download(seqs, out_dir, "ticket/msa",
+                             _unpaired_mode(), host, ua,
+                             tar_name="out_unpaired.tar.gz")
+        _extract_tar(os.path.join(out_dir, "out_unpaired.tar.gz"))
+        # paired
+        _submit_and_download(seqs, out_dir, "ticket/pair",
+                             _paired_mode(), host, ua,
+                             tar_name="out_paired.tar.gz")
+        _extract_tar(os.path.join(out_dir, "out_paired.tar.gz"))
+        need_names = ["uniref.a3m", "pair.a3m"]
+        if use_env:
+            need_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
+
+    else:  # unpaired
+        _submit_and_download(seqs, out_dir, "ticket/msa",
+                             _unpaired_mode(), host, ua)
+        _extract_tar(os.path.join(out_dir, "out.tar.gz"))
+        need_names = ["uniref.a3m"]
+        if use_env:
+            need_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
+
+    # ── 收集结果 ────────────────────────────────────────
+    found = [f for f in (os.path.join(out_dir, n) for n in need_names)
+             if os.path.isfile(f)]
+    templates_map = _parse_templates()
     return found, templates_map
 
 
@@ -319,3 +350,62 @@ def merge_a3m(file_list: List[str]) -> str:
         with open(f) as fh:
             parts.append(fh.read().rstrip() + "\n")
     return "".join(parts)
+
+
+# ── CLI 子命令注册 ──────────────────────────────────
+def register_subcommand(sub) -> argparse.ArgumentParser:
+    """在 argparse subparsers 上注册 colabfold-msa 子命令"""
+    p = sub.add_parser(
+        "colabfold-msa",
+        help="调用 ColabFold MMseqs2 API 生成 MSA (A3M)",
+        description="调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("-i", "--input", required=True,
+                    help="输入: FASTA 文件路径 或 直接传序列字符串 (单链或 > 开头 inline FASTA)")
+    p.add_argument("-o", "--output", required=True, help="输出目录")
+    p.add_argument("--pair-mode", default="unpaired",
+                    choices=["unpaired", "paired", "paired+unpaired"],
+                    help="MSA 配对模式 (默认 unpaired)")
+    p.add_argument("--no-env", action="store_true", help="不使用环境数据库")
+    p.add_argument("--no-filter", action="store_true", help="不做 MSA 过滤")
+    p.add_argument("--pair-strategy", default="greedy",
+                    choices=["greedy", "complete"], help="配对策略 (默认 greedy)")
+    p.add_argument("--host", default=DEFAULT_HOST, help="API 服务器地址 (默认 %(default)s)")
+    p.add_argument("--debug", action="store_true", help="打印调试信息")
+    p.set_defaults(func=_run_colabfold)
+    return p
+
+
+def _run_colabfold(args) -> None:
+    """执行 colabfold-msa 子命令"""
+    # 检测输入类型: 文件 / inline FASTA / 裸序列
+    raw = args.input
+    if os.path.isfile(raw):
+        with open(raw) as f:
+            seqs = parse_fasta(f.read())
+    elif raw.lstrip().startswith(">"):
+        seqs = parse_fasta(raw)
+    else:
+        seqs = [raw.upper()]
+    validate(seqs)
+    print(f"[→] 读取 {len(seqs)} 条序列", file=sys.stderr)
+
+    # 执行搜索
+    files, tmpl_map = run_search(
+        seqs=seqs,
+        out_dir=args.output,
+        pair_mode=args.pair_mode,
+        use_env=not args.no_env,
+        use_filter=not args.no_filter,
+        host=args.host,
+        pair_strategy=args.pair_strategy,
+    )
+
+    print(f"\n[✓] 完成!", file=sys.stderr)
+    print(f"    A3M 文件:", file=sys.stderr)
+    for f in files:
+        print(f"      {f}", file=sys.stderr)
+    if tmpl_map:
+        total = sum(len(v) for v in tmpl_map.values())
+        print(f"    模板: {total} 个 PDB", file=sys.stderr)
