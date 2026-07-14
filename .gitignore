@@ -25,6 +25,10 @@ __pycache__
 # Cython
 *.pyd
 *.so
+*.c
+
+# Distribution
+dist
 
 # Agents
 AGENTS.md
