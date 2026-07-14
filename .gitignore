@@ -1,3 +1,11 @@
+# Environments
+.env
+env
+.venv
+venv
+.conda-env
+conda-env
+
 # Project files
 build
 test
@@ -6,8 +14,9 @@ scratch
 # VS Code settings
 .vscode/
 
-# Poetry files
+# Poetry / lock files
 poetry.lock
+uv.lock
 
 # Python Cache
 __pycache__
