@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from html import unescape
+from ..logger import initialize_logger
 
 
 @dataclass
@@ -17,11 +18,7 @@ class PDBStructure:
         logger: logging.Logger = None,
     ):
         if not logger:
-            logger = logging.getLogger(__name__)
-            logging.basicConfig(
-                level=logging.INFO,
-                format="%(asctime)s - %(levelname)s - %(message)s",
-            )
+            logger = initialize_logger(__name__)
         logger.info(f"Downloading {self.pdb_code}.{fmt} to {folder_dir}")
         if Path(f"{folder_dir}/{self.pdb_code}.{fmt}").exists() and not overwrite:
             logger.warning(
@@ -37,3 +34,10 @@ class PDBStructure:
                 f.write(r.content)
             if logger:
                 logger.info(f"{self.pdb_code}.{fmt} downloaded to {folder_dir}")
+
+
+def fetch(pdb_code: str, fmt="pdb", download_dir=".", overwrite=False, logger=None):
+    structure = PDBStructure(pdb_code)
+    structure.download(
+        fmt=fmt, folder_dir=download_dir, overwrite=overwrite, logger=logger
+    )
