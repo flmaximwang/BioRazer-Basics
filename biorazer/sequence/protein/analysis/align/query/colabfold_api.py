@@ -379,9 +379,15 @@ def register_subcommand(sub) -> argparse.ArgumentParser:
 
 def _run_colabfold(args) -> None:
     """执行 colabfold-msa 子命令"""
-    # 检测输入类型: 文件 / inline FASTA / 裸序列
+    # 检测输入类型: 文件 / 目录 / inline FASTA / 裸序列
     raw = args.input
-    if os.path.isfile(raw):
+    if os.path.isdir(raw):
+        entries = os.listdir(raw)
+        print(f"错误: '{raw}' 是目录，请指定目录内的序列文件:", file=sys.stderr)
+        for e in sorted(entries):
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
+    elif os.path.isfile(raw):
         with open(raw) as f:
             seqs = parse_fasta(f.read())
     elif raw.lstrip().startswith(">"):
