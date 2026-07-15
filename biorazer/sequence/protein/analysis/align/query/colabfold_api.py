@@ -484,7 +484,9 @@ def _split_a3m_by_chain(a3m_path: str, Ms: List[int],
                 try:
                     current_M = int(line[1:].rstrip().split()[0])
                 except ValueError:
-                    # 非数字 header（如 >seq_name）— 丢弃
+                    # 非数字 header（数据库匹配序列，如 >|uniref|xxx）— 保留在当前链
+                    if current_M is not None:
+                        lines_by_M.setdefault(current_M, []).append(line)
                     continue
                 if current_M not in lines_by_M:
                     lines_by_M[current_M] = []
@@ -529,6 +531,19 @@ def _generate_logo(a3m_path: str, out_path: str,
     try:
         alignment = A3M2ALIGN(a3m_path).read()
         profile = SequenceProfile.from_alignment(alignment)
+        # Add gap column so gap-only positions display as '-' in the logo
+        import numpy as np
+        from biotite.sequence.alphabet import LetterAlphabet
+        from biotite.sequence.graphics import get_color_scheme
+        orig_alph = list(profile.alphabet)
+        alph_with_gap = LetterAlphabet(orig_alph + ['-'])
+        n_aa = len(orig_alph)
+        sym_with_gap = np.zeros((profile.symbols.shape[0], n_aa + 1), dtype=int)
+        sym_with_gap[:, :n_aa] = profile.symbols
+        sym_with_gap[:, n_aa] = profile.gaps
+        gap_color = '#aaaaaa'
+        colors = list(get_color_scheme('flower', profile.alphabet)) + [gap_color]
+        profile = SequenceProfile(sym_with_gap, np.zeros_like(profile.gaps), alph_with_gap)
         total_pos = profile.symbols.shape[0]
         nrows = max(1, (total_pos + cols_per_row - 1) // cols_per_row)
 
@@ -539,12 +554,25 @@ def _generate_logo(a3m_path: str, out_path: str,
             start = i * cols_per_row
             end = min(start + cols_per_row, total_pos)
             chunk = profile[start:end]
-            plot_sequence_logo(ax, chunk, scheme="flower")
+            n_actual = end - start
+            if n_actual < cols_per_row:
+                pad_width = cols_per_row - n_actual
+                pad_sym = np.zeros((pad_width, chunk.symbols.shape[1]))
+                padded_sym = np.vstack([chunk.symbols, pad_sym])
+                pad_gaps = np.zeros(pad_width, dtype=chunk.gaps.dtype)
+                padded_gaps = np.concatenate([chunk.gaps, pad_gaps])
+                chunk = SequenceProfile(padded_sym, padded_gaps, chunk.alphabet)
+            plot_sequence_logo(ax, chunk, scheme=colors)
 
             # x-axis: tick every tick_every positions, label = global position
-            # plot_sequence_logo sets x from 0..(end-start-1)
-            ticks = list(range(0, end - start, tick_every))
-            labels = [str(start + t + 1) for t in ticks]
+            # plot_sequence_logo sets x from 0..(cols_per_row-1)
+            ticks_all = list(range(tick_every, cols_per_row + 1, tick_every))
+            ticks, labels = [], []
+            for t in ticks_all:
+                pos = start + t
+                if pos <= total_pos:
+                    ticks.append(t)
+                    labels.append(str(pos))
             ax.set_xticks(ticks)
             ax.set_xticklabels(labels, fontsize=6)
 
