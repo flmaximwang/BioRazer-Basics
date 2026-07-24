@@ -1,4 +1,4 @@
-from .util.dictionary.codon import E_COLI_RT_SNAPGENE_712, E_COLI_T_SNAPGENE_712
+from biorazer.database.nucleotide import E_COLI_RT_SNAPGENE_712, E_COLI_T_SNAPGENE_712
 
 
 def transcribe(dna: str):

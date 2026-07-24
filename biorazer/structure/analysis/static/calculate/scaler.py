@@ -3,7 +3,7 @@ import biotite.structure as bio_struct
 import biotite.sequence as bio_seq
 from .. import report, select
 from .array import sasa_array, buried_unsat_hbond, hbond
-from biorazer.util.dictionary.aa_types import TYPES2AA
+from biorazer.database.amino_acid import TYPES2AA
 
 """
 Multiple calculation can be performed on a same array to return multiple scalar values.

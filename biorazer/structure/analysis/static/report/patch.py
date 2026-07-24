@@ -8,7 +8,7 @@ import biotite.sequence as bio_seq
 from scipy.spatial import KDTree
 
 from biorazer.display import print_decoration_line, print_with_decoration
-from biorazer.util.dictionary.aa_types import TYPES2AA
+from biorazer.database.amino_acid import TYPES2AA
 from ..calculate.array import sasa_array
 from .util import _normalize_fmt
 

@@ -1,5 +1,4 @@
-from ..util.dictionary.codon import *
-from ..util.dictionary import codon as codon_dicts
+from biorazer.database.nucleotide import *
 
 
 def full_reverse_translate(
