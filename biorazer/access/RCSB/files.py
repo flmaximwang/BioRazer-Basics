@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from html import unescape
-from ..logger import initialize_logger
+from ...logger import initialize_logger
 
 
 @dataclass

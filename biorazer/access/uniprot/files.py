@@ -1,6 +1,6 @@
 import requests
 from pathlib import Path
-from ..logger import initialize_logger
+from ...logger import initialize_logger
 
 REST_API = "https://rest.uniprot.org"
 
