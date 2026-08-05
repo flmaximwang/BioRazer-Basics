@@ -1,5 +1,7 @@
+import logging
+
 def initialize_logger(name: str, level: int = 20):
-    import logging
+    
     logger = logging.getLogger(name)
     logger.setLevel(level)
     if not logger.hasHandlers():
