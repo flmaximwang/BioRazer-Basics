@@ -7,8 +7,9 @@ from rdkit import Chem
 from rdkit.Chem import Mol, SDWriter
 
 from biotite.structure.io import pdb, pdbx
-from biotite.structure import AtomArray
+from biotite.structure.io.mol import SDFile, set_structure
 import biotite.structure as bio_struc
+from biotite.structure import AtomArray, BondList
 import biotite.sequence as bio_seq
 
 from biorazer.io import Converter
@@ -21,71 +22,28 @@ warnings.filterwarnings(
     message="Attribute .* not found within .* category.*",
 )
 
-#: V2000 formal-charge codes (molfile spec) for charges in [-3, 3]
-_SDF_CHARGE = {3: 1, 2: 2, 1: 3, 0: 0, -1: 5, -2: 6, -3: 7}
-
-#: biotite BondType -> V2000 bond type (1 single, 2 double, 3 triple, 4 aromatic)
-_SDF_BOND = {1: 1, 2: 2, 3: 3, 4: 4}
-
-
 def _sdf_block(tmp: AtomArray) -> str:
     """
     Serialize an AtomArray as a single V2000 SDF entry.
 
-    The entry contains all atoms of the array (element, coordinates and
-    formal charge) and its bonds. If the array has no bonds annotation,
-    bonds are inferred from interatomic distances with biotite's
+    The serialization is delegated to biotite's
+    :class:`~biotite.structure.io.mol.SDFile`, which maps biotite bond
+    types -- including the aromatic types -- to V2000 bond types and
+    writes formal charges both as inline V2000 charge codes and as
+    ``M CHG`` records. If the array has no bonds annotation, bonds are
+    inferred from interatomic distances with biotite's
     :func:`connect_via_distances` (single bonds).
-
-    Charges are written both as inline V2000 charge codes (range
-    [-3, 3]) and as ``M CHG`` records, which also cover charges outside
-    that range. Aromatic bonds (biotite ``BondType.AROMATIC``) are
-    written as V2000 bond type 4.
     """
-    n_atoms = len(tmp)
     if tmp.bonds is None:
-        bonds = bio_struc.connect_via_distances(tmp)
-    else:
-        bonds = tmp.bonds
-    n_bonds = bonds.get_bond_count()
-    has_charge = "charge" in tmp.get_annotation_categories()
-
-    lines = [
-        "",  # molecule name
-        "  biorazer          3D",
-        "",  # comment line
-    ]
-    lines.append(f"{n_atoms:3d}{n_bonds:3d}  0  0  0  0  0  0  0  0999 V2000")
-
-    charged_atoms = []  # (1-based atom index, charge) for the M CHG records
-    for i in range(n_atoms):
-        x, y, z = tmp.coord[i]
-        q = int(tmp.charge[i]) if has_charge else 0
-        if q != 0:
-            charged_atoms.append((i + 1, q))
-        charge_code = _SDF_CHARGE.get(q, 0)
-        element = tmp.element[i] or "*"
-        lines.append(
-            f"{x:10.4f}{y:10.4f}{z:10.4f} {element:<3s}  0{charge_code:3d}"
-            "  0  0  0  0  0  0  0  0  0  0"
+        tmp = tmp.copy()
+        tmp.bonds = bio_struc.connect_via_distances(
+            tmp, default_bond_type=bio_struc.BondType.SINGLE
         )
-
-    for a, b, order in bonds.as_array():
-        lines.append(
-            f"{a + 1:3d}{b + 1:3d}{_SDF_BOND.get(int(order), 1):3d}  0  0  0  0"
-        )
-
-    # Each M CHG line holds up to 8 charged atoms (V2000 property block)
-    for start in range(0, len(charged_atoms), 8):
-        batch = charged_atoms[start : start + 8]
-        lines.append(
-            f"M  CHG{len(batch):3d}"
-            + "".join(f" {atom_i:3d} {c:3d}" for atom_i, c in batch)
-        )
-
-    lines.append("M  END")
-    lines.append("$$$$")
-    return "\n".join(lines) + "\n"
+    sdf = SDFile()
+    set_structure(sdf, tmp, record_name="")
+    text_io = io.StringIO()
+    sdf.write(text_io)
+    return text_io.getvalue()
 
 
 class CIF2STRUCT(Converter):
@@ -142,12 +100,6 @@ class STRUCT2SDF(Converter):
     first.
     """
 
-    def read(self) -> AtomArray:
-        raise NotImplementedError(
-            "STRUCT2SDF is a write-only converter, "
-            "use CIF2STRUCT or SDF2MOL for reading"
-        )
-
     def write(self, tmp: AtomArray) -> str | None:
         """
         Parameters
@@ -167,6 +119,61 @@ class STRUCT2SDF(Converter):
             return self.output_io.getvalue()
         Path(self.output_io).write_text(text)
         return None
+
+class STRUCT_MOL2(Converter):
+
+    def write(self, tmp: AtomArray, molecule_name="UNK") -> None:
+        bonds: BondList = tmp.bonds
+        n_atoms = len(tmp)
+        n_bonds = len(bonds.as_array()) if bonds is not None else 0
+        
+        with self._text_io(self.output_io, "w") as f:
+            # @<TRIPOS>MOLECULE block
+            f.write("@<TRIPOS>MOLECULE\n")
+            f.write(f"{molecule_name}\n")
+            f.write(f"{n_atoms} {n_bonds} 0 0 0\n")
+            f.write("SMALL\n")
+            f.write("USER_CHARGES\n\n")
+
+            f.write("@<TRIPOS>ATOM\n")
+            for i in range(n_atoms):
+                atom = tmp[i]
+                x, y, z = atom.coord
+                atom_name = (
+                    atom.atom_name if hasattr(atom, "atom_name") else atom.element
+                )
+                atom_type = (
+                    atom.element
+                )  # Map to SYBYL atom types if needed (e.g., C.3, H)
+                res_name = (
+                    atom.res_name if hasattr(atom, "res_name") else "RES"
+                )
+                res_id = atom.res_id if hasattr(atom, "res_id") else 1
+                charge = atom.charge if hasattr(atom, "charge") else 0.0
+
+                f.write(
+                    f"{i+1:7d} {atom_name:<8s} {x:10.4f} {y:10.4f} {z:10.4f}"
+                    f" {atom_type:<5s} {res_id:5d} {res_name:<8s} {charge:10.4f}\n"
+                )
+
+            # @<TRIPOS>BOND block (if bonds exist)
+            if n_bonds > 0:
+                f.write("\n@<TRIPOS>BOND\n")
+
+                _BOND_ORDER_MAP = {
+                    1: "1",
+                    2: "2",
+                    3: "3",
+                    5: "ar",
+                    6: "ar"
+                }
+
+                for i, bond in enumerate(bonds.as_array()):
+                    # bond is (atom1_index, atom2_index, bond_order)
+
+                    f.write(
+                        f"{i+1:6d} {bond[0]+1:6d} {bond[1]+1:6d} {_BOND_ORDER_MAP[int(bond[2])]:>5}\n"
+                    )
 
 
 class MOL2SDF(SDF2MOL):
