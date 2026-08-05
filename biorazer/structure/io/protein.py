@@ -31,22 +31,6 @@ class STRUCT2PDB(Converter):
         output_file_obj.write(self.output_io)
 
 
-class PDB2CIF(PDB2STRUCT, STRUCT2CIF):
-    pass
-
-
-class CIF2PDB(CIF2STRUCT, STRUCT2PDB):
-    pass
-
-
-class CIF2CIF(CIF2STRUCT, STRUCT2CIF):
-    pass
-
-
-class PDB2PDB(PDB2STRUCT, STRUCT2PDB):
-    pass
-
-
 class PDB2SEQ(Converter):
     """
     Converts a PDB file to a sequence dictionary.
@@ -86,6 +70,3 @@ class PDB2SEQ(Converter):
 
         return res
 
-
-class PDB2FASTA(PDB2SEQ, SEQ2FASTA):
-    pass
