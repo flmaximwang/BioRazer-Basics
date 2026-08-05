@@ -1,5 +1,6 @@
 from pathlib import Path
-
+from typing import Any
+from abc import abstractmethod
 
 class Converter:
     """
@@ -15,12 +16,21 @@ class Converter:
         self.input_file = Path(input_file)
         self.output_file = Path(output_file)
 
-    def read(self):
-        pass
+    @abstractmethod
+    def read(self) -> Any:
+        """
+        This method read the `self.input_file` and returns the desired dataclass
+        """
 
-    def write(self, tmp):
-        pass
+    @abstractmethod
+    def write(self, tmp) -> None:
+        """
+        This method write `tmp` into `self.output_file`
+        """
 
-    def convert(self, read_kwargs=dict(), write_kwargs=dict()):
+    def convert(self, read_kwargs=None, write_kwargs=None):
+        """
+        A pipeline to run self.read and self.write sequentially
+        """
         tmp = self.read(**read_kwargs)
         self.write(tmp, **write_kwargs)
