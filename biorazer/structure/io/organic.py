@@ -46,7 +46,7 @@ def _sdf_block(tmp: AtomArray) -> str:
     return text_io.getvalue()
 
 
-class CIF2STRUCT(Converter):
+class CIF_STRUCT(Converter):
     """
     Read small molecule cif files to biotite AtomArray
     """
@@ -70,7 +70,7 @@ class CIF2STRUCT(Converter):
         return structure
 
 
-class SDF2MOL(Converter):
+class SDF_MOL(Converter):
 
     def read(self, sanitize: bool = True, removeHs: bool = True, strictParsing: bool = True, **kwargs) -> Mol:
         if isinstance(self.input_io, io.StringIO):
@@ -86,7 +86,7 @@ class SDF2MOL(Converter):
         return mol
 
 
-class STRUCT2SDF(Converter):
+class STRUCT_SDF(Converter):
     """
     Write a biotite AtomArray to an SDF file or an ``io.StringIO``.
 
@@ -176,7 +176,7 @@ class STRUCT_MOL2(Converter):
                     )
 
 
-class MOL2SDF(SDF2MOL):
+class MOL_SDF(SDF_MOL):
     """
     Write an RDKit Mol to an SDF file or an ``io.StringIO``.
 
@@ -207,7 +207,7 @@ class MOL2SDF(SDF2MOL):
         return None
 
 
-class CONF2SDF(SDF2MOL):
+class CONF_SDF(SDF_MOL):
     """
     Write conformer(s) of an RDKit Mol to an SDF file or an
     ``io.StringIO``, one SDF entry per conformer.

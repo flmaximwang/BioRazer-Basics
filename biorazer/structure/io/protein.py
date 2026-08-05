@@ -7,37 +7,37 @@ from biorazer.io import Converter
 from biorazer.sequence.io import SEQ2FASTA
 
 
-class PDB2STRUCT(Converter):
+class PDB_STRUCT(Converter):
     def read(self, **kwargs) -> AtomArray:
         return pdb.get_structure(pdb.PDBFile.read(self.input_io), **kwargs)[0]
 
 
-class CIF2STRUCT(Converter):
+class CIF_STRUCT(Converter):
     def read(self, **kwargs) -> AtomArray:
         return pdbx.get_structure(pdbx.CIFFile.read(self.input_io), **kwargs)[0]
 
 
-class STRUCT2CIF(Converter):
+class STRUCT_CIF(Converter):
     def write(self, tmp, **kwargs):
         output_file_obj = pdbx.CIFFile()
         pdbx.set_structure(output_file_obj, tmp, **kwargs)
         output_file_obj.write(self.output_io)
 
 
-class STRUCT2PDB(Converter):
+class STRUCT_PDB(Converter):
     def write(self, tmp: AtomArray, **kwargs):
         output_file_obj = pdb.PDBFile()
         pdb.set_structure(output_file_obj, tmp, **kwargs)
         output_file_obj.write(self.output_io)
 
 
-class PDB2SEQ(Converter):
+class PDB_SEQ(Converter):
     """
     Converts a PDB file to a sequence dictionary.
     """
 
     def read(self, **kwargs) -> dict:
-        structure = PDB2STRUCT(self.input_io, self.output_io).read(**kwargs)
+        structure = PDB_STRUCT(self.input_io, self.output_io).read(**kwargs)
         chain_ids = bio_struc.get_chains(structure)
         res = {}
         for chain_id in chain_ids:
