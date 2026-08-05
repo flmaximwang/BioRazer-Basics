@@ -8,8 +8,8 @@ from biorazer.structure.util.report_utils import (
     _normalize_interface_residues,
     _to_pymol_atom_selector,
 )
+from ....selector.spatial import interface
 from .util import _normalize_fmt
-from .. import select
 
 
 def report_interface_residues(
@@ -32,7 +32,7 @@ def report_interface_residues(
     """
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    interface_atom_mask_1, interface_atom_mask_2, _ = select.mask_interface_atoms(
+    interface_atom_mask_1, interface_atom_mask_2 = interface(
         atom_array,
         selection1=selection1,
         selection2=selection2,
