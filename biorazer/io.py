@@ -23,7 +23,7 @@ class Converter:
         self.output_io = output_io
 
     @contextmanager
-    def _text_io(self, target, mode: str = "r") -> Generator[TextIO]:
+    def _text_io(self, target, mode: str = "r") -> Generator[TextIO, None, None]:
         """
         Yield a text-mode file object for `target`.
 
