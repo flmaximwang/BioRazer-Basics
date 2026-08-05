@@ -9,26 +9,26 @@ from biorazer.sequence.io import SEQ2FASTA
 
 class PDB2STRUCT(Converter):
     def read(self, **kwargs) -> AtomArray:
-        return pdb.get_structure(pdb.PDBFile.read(self.input_file), **kwargs)[0]
+        return pdb.get_structure(pdb.PDBFile.read(self.input_io), **kwargs)[0]
 
 
 class CIF2STRUCT(Converter):
     def read(self, **kwargs) -> AtomArray:
-        return pdbx.get_structure(pdbx.CIFFile.read(self.input_file), **kwargs)[0]
+        return pdbx.get_structure(pdbx.CIFFile.read(self.input_io), **kwargs)[0]
 
 
 class STRUCT2CIF(Converter):
     def write(self, tmp, **kwargs):
         output_file_obj = pdbx.CIFFile()
         pdbx.set_structure(output_file_obj, tmp, **kwargs)
-        output_file_obj.write(self.output_file)
+        output_file_obj.write(self.output_io)
 
 
 class STRUCT2PDB(Converter):
     def write(self, tmp: AtomArray, **kwargs):
         output_file_obj = pdb.PDBFile()
         pdb.set_structure(output_file_obj, tmp, **kwargs)
-        output_file_obj.write(self.output_file)
+        output_file_obj.write(self.output_io)
 
 
 class PDB2CIF(PDB2STRUCT, STRUCT2CIF):
@@ -53,7 +53,7 @@ class PDB2SEQ(Converter):
     """
 
     def read(self, **kwargs) -> dict:
-        structure = PDB2STRUCT(self.input_file, self.output_file).read(**kwargs)
+        structure = PDB2STRUCT(self.input_io, self.output_io).read(**kwargs)
         chain_ids = bio_struc.get_chains(structure)
         res = {}
         for chain_id in chain_ids:

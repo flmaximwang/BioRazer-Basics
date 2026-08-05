@@ -28,24 +28,6 @@ _SDF_CHARGE = {3: 1, 2: 2, 1: 3, 0: 0, -1: 5, -2: 6, -3: 7}
 _SDF_BOND = {1: 1, 2: 2, 3: 3, 4: 4}
 
 
-def _resolve_output(output, fallback):
-    """
-    Resolve the write target of a converter.
-
-    If `output` is None, `fallback` (usually `self.output_file`) is
-    used. An `io.StringIO` is passed through unchanged; any other value
-    is converted to a non-empty file path string.
-    """
-    if output is None:
-        output = fallback
-    if isinstance(output, io.StringIO):
-        return output
-    path = Path(output)
-    if not path.name:
-        raise ValueError(f"invalid SDF output target: {output!r}")
-    return str(path)
-
-
 def _sdf_block(tmp: AtomArray) -> str:
     """
     Serialize an AtomArray as a single V2000 SDF entry.
@@ -112,7 +94,7 @@ class CIF2STRUCT(Converter):
     """
 
     def read(self, **kwargs) -> AtomArray:
-        cif_file = pdbx.CIFFile.read(self.input_file)
+        cif_file = pdbx.CIFFile.read(self.input_io)
         resn = cif_file.block["chem_comp_atom"]["comp_id"].data.array
         name = cif_file.block["chem_comp_atom"]["atom_id"].data.array
         element = cif_file.block["chem_comp_atom"]["type_symbol"].data.array
@@ -133,8 +115,16 @@ class CIF2STRUCT(Converter):
 class SDF2MOL(Converter):
 
     def read(self, sanitize: bool = True, removeHs: bool = True, strictParsing: bool = True, **kwargs) -> Mol:
-        self.input_file = str(self.input_file)
-        mol = Chem.MolFromMolFile(self.input_file, sanitize=sanitize, removeHs=removeHs, strictParsing=strictParsing)
+        if isinstance(self.input_io, io.StringIO):
+            # ForwardSDMolSupplier requires a binary file object
+            supplier = Chem.ForwardSDMolSupplier(
+                io.BytesIO(self.input_io.getvalue().encode("utf-8")),
+                sanitize=sanitize,
+                removeHs=removeHs,
+                strictParsing=strictParsing,
+            )
+            return next(iter(supplier), None)
+        mol = Chem.MolFromMolFile(str(self.input_io), sanitize=sanitize, removeHs=removeHs, strictParsing=strictParsing)
         return mol
 
 
@@ -158,33 +148,24 @@ class STRUCT2SDF(Converter):
             "use CIF2STRUCT or SDF2MOL for reading"
         )
 
-    def write(
-        self,
-        tmp: AtomArray,
-        output: str | Path | io.StringIO | None = None,
-    ) -> str | None:
+    def write(self, tmp: AtomArray) -> str | None:
         """
         Parameters
         ----------
         tmp : AtomArray
             The atom array to write.
-        output : str, Path, io.StringIO or None
-            The write target. A file path creates an SDF file, an
-            ``io.StringIO`` receives the SDF text. If None,
-            `self.output_file` is used.
 
         Returns
         -------
         str or None
-            The SDF text if `output` is an ``io.StringIO``, otherwise
-            None.
+            The SDF text if `self.output_io` is an ``io.StringIO``,
+            otherwise None.
         """
-        target = _resolve_output(output, self.output_file)
         text = _sdf_block(tmp)
-        if isinstance(target, io.StringIO):
-            target.write(text)
-            return target.getvalue()
-        Path(target).write_text(text)
+        if isinstance(self.output_io, io.StringIO):
+            self.output_io.write(text)
+            return self.output_io.getvalue()
+        Path(self.output_io).write_text(text)
         return None
 
 
@@ -195,35 +176,27 @@ class MOL2SDF(SDF2MOL):
     The read side is inherited from :class:`SDF2MOL`.
     """
 
-    def write(
-        self,
-        tmp: Mol,
-        output: str | Path | io.StringIO | None = None,
-    ) -> str | None:
+    def write(self, tmp: Mol) -> str | None:
         """
         Parameters
         ----------
         tmp : Mol
             The RDKit molecule to write.
-        output : str, Path, io.StringIO or None
-            The write target. A file path creates an SDF file, an
-            ``io.StringIO`` receives the SDF text. If None,
-            `self.output_file` is used.
 
         Returns
         -------
         str or None
-            The SDF text if `output` is an ``io.StringIO``, otherwise
-            None.
+            The SDF text if `self.output_io` is an ``io.StringIO``,
+            otherwise None.
         """
-        target = _resolve_output(output, self.output_file)
+        target = self.output_io if isinstance(self.output_io, io.StringIO) else str(self.output_io)
         writer = SDWriter(target)
         try:
             writer.write(tmp)
         finally:
             writer.close()
-        if isinstance(target, io.StringIO):
-            return target.getvalue()
+        if isinstance(self.output_io, io.StringIO):
+            return self.output_io.getvalue()
         return None
 
 
@@ -238,7 +211,6 @@ class CONF2SDF(SDF2MOL):
     def write(
         self,
         tmp: Mol,
-        output: str | Path | io.StringIO | None = None,
         conf_id: int | list[int] | None = None,
     ) -> str | None:
         """
@@ -246,10 +218,6 @@ class CONF2SDF(SDF2MOL):
         ----------
         tmp : Mol
             The RDKit molecule whose conformers are written.
-        output : str, Path, io.StringIO or None
-            The write target. A file path creates an SDF file, an
-            ``io.StringIO`` receives the SDF text. If None,
-            `self.output_file` is used.
         conf_id : int, list of int or None
             The conformer id(s) to write. If None, all conformers of
             `tmp` are written.
@@ -257,10 +225,10 @@ class CONF2SDF(SDF2MOL):
         Returns
         -------
         str or None
-            The SDF text if `output` is an ``io.StringIO``, otherwise
-            None.
+            The SDF text if `self.output_io` is an ``io.StringIO``,
+            otherwise None.
         """
-        target = _resolve_output(output, self.output_file)
+        target = self.output_io if isinstance(self.output_io, io.StringIO) else str(self.output_io)
         conformer_ids = [conf.GetId() for conf in tmp.GetConformers()]
         if conf_id is None:
             conf_ids = conformer_ids
@@ -279,6 +247,6 @@ class CONF2SDF(SDF2MOL):
                 writer.write(tmp, confId=cid)
         finally:
             writer.close()
-        if isinstance(target, io.StringIO):
-            return target.getvalue()
+        if isinstance(self.output_io, io.StringIO):
+            return self.output_io.getvalue()
         return None

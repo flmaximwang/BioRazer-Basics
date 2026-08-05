@@ -7,7 +7,7 @@ class A3M2ALIGN(Converter):
 
     def read(self):
         sequences = []
-        with open(self.input_file, "r") as f:
+        with self._text_io(self.input_io) as f:
             for line in f:
                 if line.startswith(">"):
                     continue
@@ -24,7 +24,7 @@ class A3M2ALIGN(Converter):
 
     def read_labels(self) -> list[str]:
         labels = []
-        with open(self.input_file, "r") as f:
+        with self._text_io(self.input_io) as f:
             for line in f:
                 if line.startswith(">"):
                     labels.append(line[1:].strip())
@@ -35,13 +35,12 @@ class ALIGN2A3M(Converter):
 
     def write(self, alignment: Alignment, labels: list[str] = []):
         sequences = alignment.get_gapped_sequences()
-        if len(labels) == 0:
-            with open(self.output_file, "w") as f:
+        with self._text_io(self.output_io, "w") as f:
+            if len(labels) == 0:
                 for i, seq in enumerate(sequences):
                     f.write(f">{i}\n")
                     f.write(str(seq) + "\n")
-        else:
-            with open(self.output_file, "w") as f:
+            else:
                 for label, seq in zip(labels, sequences):
                     f.write(f">{label}\n")
                     f.write(str(seq) + "\n")

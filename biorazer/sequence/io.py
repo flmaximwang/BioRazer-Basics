@@ -16,7 +16,7 @@ class SEQ2FASTA(Converter):
         fasta_file = fasta.FastaFile()
         for key, value in tmp.items():
             fasta_file[key] = value
-        fasta_file.write(self.output_file)
+        fasta_file.write(self.output_io)
 
 
 class FASTA2SEQ(Converter):
@@ -31,7 +31,7 @@ class FASTA2SEQ(Converter):
             A dictionary with sequence IDs as keys and sequences as values.
         """
 
-        fasta_file = fasta.FastaFile.read(self.input_file)
+        fasta_file = fasta.FastaFile.read(self.input_io)
         seq_dict = {}
         for key in fasta_file.keys():
             seq_dict[key] = str(fasta_file[key])
