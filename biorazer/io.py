@@ -23,9 +23,12 @@ class Converter:
         """
 
     @abstractmethod
-    def write(self, tmp) -> None:
+    def write(self, tmp) -> str | None:
         """
-        This method write `tmp` into `self.output_file`
+        This method write `tmp` into `self.output_file`.
+
+        Returns the written text when the target is a file-like object
+        (e.g. ``io.StringIO``), otherwise None.
         """
 
     def convert(self, read_kwargs=None, write_kwargs=None):
