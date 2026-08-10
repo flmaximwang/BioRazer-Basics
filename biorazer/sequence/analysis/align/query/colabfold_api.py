@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 from biotite.sequence.graphics import plot_sequence_logo
 from biotite.sequence.profile import SequenceProfile
 
-from ..io import A3M2ALIGN
+from biorazer.sequence.io import A3m_Alignment
 from ..plot import plot_msa_coverage
 
 # ── 默认值 ──────────────────────────────────────────
@@ -529,7 +529,7 @@ def _generate_logo(a3m_path: str, out_path: str,
     成功时返回 logo 图片路径，失败时返回空字符串。
     """
     try:
-        alignment = A3M2ALIGN(a3m_path).read()
+        alignment = A3m_Alignment(a3m_path).read()
         profile = SequenceProfile.from_alignment(alignment)
         # Add gap column so gap-only positions display as '-' in the logo
         import numpy as np
@@ -597,7 +597,7 @@ def _generate_coverage_plot(a3m_path: str, out_path: str) -> str:
     成功时返回图片路径，失败时返回空字符串。
     """
     try:
-        alignment = A3M2ALIGN(a3m_path).read()
+        alignment = A3m_Alignment(a3m_path).read()
         plot_msa_coverage(alignment)
         fig = plt.gcf()
         fig.savefig(out_path, dpi=150, bbox_inches="tight")
