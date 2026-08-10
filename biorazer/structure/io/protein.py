@@ -6,20 +6,20 @@ import biotite.structure as bio_struc
 import biotite.sequence as bio_seq
 from biotite.structure.io.pdb.hybrid36 import encode_hybrid36
 from biorazer.io import Converter
-from biorazer.sequence.io import SEQ2FASTA
+from biorazer.sequence.io import StrDict_Fasta
 
 
-class PDB_STRUCT(Converter):
+class Pdb_AtomArray(Converter):
     def read(self, **kwargs) -> AtomArray:
         return pdb.get_structure(pdb.PDBFile.read(self.input_io), **kwargs)[0]
 
 
-class CIF_STRUCT(Converter):
+class Cif_AtomArray(Converter):
     def read(self, **kwargs) -> AtomArray:
         return pdbx.get_structure(pdbx.CIFFile.read(self.input_io), **kwargs)[0]
 
 
-class STRUCT_CIF(Converter):
+class AtomArray_Cif(Converter):
     def write(self, tmp, **kwargs):
         output_file_obj = pdbx.CIFFile()
         pdbx.set_structure(output_file_obj, tmp, **kwargs)
@@ -140,7 +140,7 @@ def _format_ssbond_records(array: AtomArray, hybrid36: bool) -> list[str]:
     return records
 
 
-class STRUCT_PDB(Converter):
+class AtomArray_Pdb(Converter):
     def write(self, tmp: AtomArray, hybrid36: bool = False):
         """
         Write a PDB file. Intermolecular covalent bonds between a protein
@@ -157,13 +157,13 @@ class STRUCT_PDB(Converter):
         output_file_obj.write(self.output_io)
 
 
-class PDB_SEQ(Converter):
+class Pdb_StrDict(Converter):
     """
     Converts a PDB file to a sequence dictionary.
     """
 
     def read(self, **kwargs) -> dict:
-        structure = PDB_STRUCT(self.input_io, self.output_io).read(**kwargs)
+        structure = Pdb_AtomArray(self.input_io, self.output_io).read(**kwargs)
         chain_ids = bio_struc.get_chains(structure)
         res = {}
         for chain_id in chain_ids:

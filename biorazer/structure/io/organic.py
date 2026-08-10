@@ -13,7 +13,7 @@ from biotite.structure import AtomArray, BondList
 import biotite.sequence as bio_seq
 
 from biorazer.io import Converter
-from biorazer.sequence.io import SEQ2FASTA
+from biorazer.sequence.io import StrDict_Fasta
 
 warnings.filterwarnings(
     "ignore",
@@ -46,7 +46,7 @@ def _sdf_block(tmp: AtomArray) -> str:
     return text_io.getvalue()
 
 
-class CIF_STRUCT(Converter):
+class Cif_AtomArray(Converter):
     """
     Read small molecule cif files to biotite AtomArray
     """
@@ -70,7 +70,7 @@ class CIF_STRUCT(Converter):
         return structure
 
 
-class SDF_MOL(Converter):
+class Sdf_Mol(Converter):
 
     def read(self, sanitize: bool = True, removeHs: bool = True, strictParsing: bool = True, **kwargs) -> Mol:
         if isinstance(self.input_io, io.StringIO):
@@ -86,7 +86,7 @@ class SDF_MOL(Converter):
         return mol
 
 
-class STRUCT_SDF(Converter):
+class AtomArray_Sdf(Converter):
     """
     Write a biotite AtomArray to an SDF file or an ``io.StringIO``.
 
@@ -120,7 +120,7 @@ class STRUCT_SDF(Converter):
         Path(self.output_io).write_text(text)
         return None
 
-class STRUCT_MOL2(Converter):
+class AtomArray_Mol2(Converter):
 
     def write(self, tmp: AtomArray, molecule_name="UNK") -> None:
         bonds: BondList = tmp.bonds
@@ -176,7 +176,7 @@ class STRUCT_MOL2(Converter):
                     )
 
 
-class MOL_SDF(SDF_MOL):
+class Mol_Sdf(Sdf_Mol):
     """
     Write an RDKit Mol to an SDF file or an ``io.StringIO``.
 
@@ -207,7 +207,7 @@ class MOL_SDF(SDF_MOL):
         return None
 
 
-class CONF_SDF(SDF_MOL):
+class Conf_Sdf(Sdf_Mol):
     """
     Write conformer(s) of an RDKit Mol to an SDF file or an
     ``io.StringIO``, one SDF entry per conformer.
