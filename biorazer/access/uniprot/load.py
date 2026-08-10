@@ -1,4 +1,4 @@
-from biorazer.sequence.protein import ProteinSequence
+from biotite.sequence import ProteinSequence
 
 class UniprotSequence(ProteinSequence):
     

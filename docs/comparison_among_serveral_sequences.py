@@ -1,4 +1,4 @@
-from biorazer.sequence.protein.analysis.align.plot import plot_msa
+from biorazer.sequence.analysis.align.plot import plot_msa
 
 plot_msa(
     ["AAA", "ACA"],

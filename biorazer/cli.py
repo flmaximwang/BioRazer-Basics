@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from biorazer.sequence.protein.analysis.align.query import colabfold_api
+from biorazer.sequence.analysis.align.query import colabfold_api
 
 
 def main():

@@ -4,7 +4,7 @@ import os
 import tempfile
 import pytest
 
-from biorazer.sequence.protein.analysis.align.query.colabfold_api import (
+from biorazer.sequence.analysis.align.query.colabfold_api import (
     DEFAULT_HOST,
     DEFAULT_UA,
     parse_fasta,
