@@ -10,7 +10,9 @@ from biotite.sequence.graphics.colorschemes import get_color_scheme
 from biotite.visualize import plot_scaled_text
 import numpy as np
 import matplotlib.pyplot as plt
-from .util import Alignment
+from ..util import Alignment
+
+__all__ = ["plot_msa_coverage", "plot_msa", "plot_seqlogo"]
 
 
 def plot_msa_coverage(
@@ -161,32 +163,29 @@ def plot_msa(
         )
 
     # Format Input
+    if sequences is None:
+        formatted_sequences = list(msa.sequences)
+    else:
+        formatted_sequences = []
+        for sequence in sequences:
+            if isinstance(sequence, str):
+                formatted_sequences.append(ProteinSequence(sequence))
+            elif isinstance(sequence, ProteinSequence):
+                formatted_sequences.append(sequence)
+            else:
+                raise ValueError(
+                    "Each item in 'sequences' must be either a string or a ProteinSequence."
+                )
     if labels is None:
-        labels = [f"{i+1}" for i in range(len(sequences))]
-        plot_params["labels"] = labels
+        labels = [f"{i+1}" for i in range(len(formatted_sequences))]
     plot_params["labels"] = labels
     plot_params["symbols_per_line"] = symbols_per_line
     plot_params["symbol_spacing"] = symbol_spacing
     plot_params["show_numbers"] = True
     plot_params["number_functions"] = number_functions
 
-    formatted_sequences = []
-    for sequence in sequences:
-        if isinstance(sequence, str):
-            formatted_sequences.append(ProteinSequence(sequence))
-        elif isinstance(sequence, ProteinSequence):
-            formatted_sequences.append(sequence)
-        else:
-            raise ValueError(
-                "Each item in 'sequences' must be either a string or a ProteinSequence."
-            )
-    print(formatted_sequences)
-
     # Get MSA
-    if msa is not None:
-        return msa
-    else:
-
+    if msa is None:
         msa, order, tree, distance_matrix = align_multiple(
             formatted_sequences,
             SubstitutionMatrix.std_protein_matrix(),

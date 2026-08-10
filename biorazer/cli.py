@@ -3,6 +3,7 @@ import argparse
 import sys
 
 from biorazer.sequence.analysis.align.query import colabfold_api
+from biorazer.sequence.analysis.align.plot import cli as plot_cli
 
 
 def main():
@@ -15,6 +16,7 @@ def main():
 
     # 注册子命令
     colabfold_api.register_subcommand(sub)
+    plot_cli.register_subcommand(sub)
 
     args = parser.parse_args()
     if hasattr(args, "func"):
