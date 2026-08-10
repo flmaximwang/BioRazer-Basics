@@ -4,7 +4,7 @@ from .protein import (
     Fasta_ProteinSequenceDict,
     ProteinSequenceDict_Fasta,
     A3m_Alignment,
-    ALIGN2A3M,
+    Alignment_A3m,
 )
 from . import nucleotide
 
