@@ -1,5 +1,4 @@
-"""
-colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
+"""colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
 
 单链:
   from biorazer.sequence.protein.analysis.align.query import run_search
@@ -7,12 +6,15 @@ colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
   # result.per_seq["my_protein"].files  -> 各数据库 a3m 路径
   # result.per_seq["my_protein"].plots  -> [logo.png]
 
-多链 (unpaired, 各链独立搜索):
-  result = run_search([("chain_A", "SEQ1..."), ("chain_B", "SEQ2...")], "msa_out/")
+多链 complex (一条记录, ':' 分隔各链, ColabFold 约定; 用于 paired):
+  result = run_search([("complex", "SEQ1...:SEQ2...")], "msa_out/",
+                       pair_mode="paired")
+  # 提交时每条链拆成独立记录 (>101, >102, ...), 服务器端配对,
+  # 结果合并为整复合物的一份 a3m: msa_out/complex/pair.a3m
 
-多链 (paired, 用于 OpenDDE/AF3 多聚体):
-  result = run_search([("chain_A", "SEQ1..."), ("chain_B", "SEQ2...")],
-                       "msa_out/", pair_mode="paired")
+多条记录 = 多个独立任务 (各自提交, 互不配对):
+  result = run_search([("prot_A", "SEQ1..."), ("prot_B", "SEQ2...")], "msa_out/")
+  # 输出 msa_out/prot_A/, msa_out/prot_B/
 
 输出:
   msa_out/
@@ -35,9 +37,11 @@ import io
 import json
 import os
 import random
+import re
 import shutil
 import sys
 import tarfile
+import tempfile
 import time
 from typing import Dict, List, NamedTuple, Optional, Tuple
 from urllib.request import Request, urlopen
@@ -728,6 +732,234 @@ def _generate_coverage_plot(a3m_path: str, out_path: str) -> str:
         return ""
 
 
+# ── endpoint / mode ──────────────────────────────────
+def _unpaired_mode(use_env: bool, use_filter: bool) -> str:
+    if use_filter:
+        return "env" if use_env else "all"
+    return "env-nofilter" if use_env else "nofilter"
+
+
+def _paired_mode(use_env: bool, pair_strategy: str) -> str:
+    m = "paircomplete" if pair_strategy == "complete" else "pairgreedy"
+    return m + "-env" if use_env else m
+
+
+# ── A3M 读取 / 分段 / 多链合并 ────────────────────────
+def _read_a3m_lines(path: str) -> List[str]:
+    """读取 a3m，去除 \\x00 前缀/后缀与空行。
+
+    服务器返回的 a3m 中多链段头 (如 >102) 前带有 \\x00，行尾也可能有
+    \\x00 (mmseqs2 的 null 终止符)，统一清理后再解析。
+    """
+    lines: List[str] = []
+    with open(path, "rb") as f:
+        for raw in f:
+            l = raw.decode("utf-8", "ignore").rstrip("\n").strip("\x00").lstrip("\x00")
+            if l.strip():
+                lines.append(l)
+    return lines
+
+
+def _split_a3m_sections(lines: List[str]) -> List[List[str]]:
+    """按 query header (纯数字 >N) 把 a3m 分成多链段。
+
+    每次提交的链对应一个段 (提交顺序 = 段顺序)，段内为该链的
+    query + 各行 (配对/搜索命中，每行 header + 序列)。
+    """
+    sections: List[List[str]] = []
+    cur: Optional[List[str]] = None
+    for l in lines:
+        if re.fullmatch(r">\d+", l):
+            cur = []
+            sections.append(cur)
+        if cur is not None:
+            cur.append(l)
+    return sections
+
+
+def _merge_paired_a3m(lines: List[str], n_chains: int) -> str:
+    """把多链配对结果 (每条链一段) 合并为整复合物 a3m。
+
+    与 colabfold 的 pair_sequences 一致: 服务器保证各段行数一致且行
+    对应 (同一配对的链序列; 缺失方以 DUMMY/- 填充)，逐行拼接——
+    header 从第二段起 '>' 换成 '\\t'，序列行直接拼接。
+    单链 (仅一段) 时原样返回。
+    """
+    sections = _split_a3m_sections(lines)
+    if len(sections) <= 1:
+        return "\n".join(lines) + "\n"
+    if len(sections) != n_chains:
+        print(f"  [!] 服务器返回 {len(sections)} 段, 期望 {n_chains} 段, 按实际段数合并",
+              file=sys.stderr)
+    n_rows = min(len(s) for s in sections)
+    merged: List[str] = []
+    for i in range(n_rows):
+        parts = []
+        for j, sec in enumerate(sections):
+            line = sec[i]
+            if line.startswith(">") and j > 0:
+                line = "\t" + line[1:]
+            parts.append(line)
+        merged.append("".join(parts))
+    return "\n".join(merged) + "\n"
+
+
+def _merge_unpaired_a3m(lines: List[str], chain_lengths: List[int]) -> str:
+    """把多链 unpaired 结果合并为整复合物 a3m (colabfold pad_sequences)。
+
+    各链段保留自己的 header，序列行按链位置前后补 '-' 到复合物全长，
+    便于作为多链 a3m 直接使用。
+    """
+    sections = _split_a3m_sections(lines)
+    blanks = ["-" * L for L in chain_lengths]
+    out: List[str] = []
+    for n, sec in enumerate(sections):
+        for line in sec:
+            if line.startswith(">"):
+                out.append(line)
+            else:
+                out.append("".join(blanks[:n] + [line] + blanks[n + 1:]))
+    return "\n".join(out) + "\n"
+
+
+# ── 模板 (pdb70.m8 → 各序列目录 + 下载/本地读取) ──────
+def _handle_templates(tmp_dir: str, out_dir: str, Ms: List[int],
+                      named_seqs: List[Tuple[str, str]],
+                      host: str, ua: str,
+                      local_rcsb_database: Optional[str]) -> None:
+    """解析 tar 内 pdb70.m8 → 各序列目录 pdb70.m8 + 模板结构。
+
+    注意: 仅 unpaired 的 msa ticket 附带 pdb70.m8; pair ticket 不做
+    模板搜索 (与 colabfold 一致: use_pairing 时 use_templates=False)。
+    """
+    m8_path = os.path.join(tmp_dir, "pdb70.m8")
+    if not os.path.isfile(m8_path):
+        return
+    chain_templates: Dict[int, List[Tuple[str, Optional[str]]]] = {}
+    chain_m8_lines: Dict[int, List[str]] = {}
+    with open(m8_path) as f:
+        for line in f:
+            line = line.rstrip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 4:
+                M = int(parts[0])
+                target = parts[1]
+                chain: Optional[str] = None
+                pdb_id = target
+                if "_" in target:
+                    pdb_id, chain = target.split("_", 1)
+                chain_templates.setdefault(M, []).append((pdb_id, chain))
+                chain_m8_lines.setdefault(M, []).append(line)
+    print(f"  [→] 模板搜索: {sum(len(v) for v in chain_templates.values())} 个 hit",
+          file=sys.stderr)
+    for name, _ in named_seqs:
+        seq_dir = os.path.join(out_dir, name)
+        m8_out = os.path.join(seq_dir, "pdb70.m8")
+        lines_out: List[str] = []
+        for M in Ms:
+            lines_out.extend(chain_m8_lines.get(M, []))
+        if lines_out:
+            with open(m8_out, "w") as f:
+                for raw_line in lines_out:
+                    f.write(raw_line + "\n")
+    _download_and_split_templates(chain_templates, Ms, named_seqs, out_dir, host, ua,
+                                  local_rcsb_database=local_rcsb_database)
+
+
+# ── 单任务 (一条记录) ────────────────────────────────
+def _run_one_job(name: str, seq: str, out_dir: str,
+                 pair_mode: str, use_env: bool, use_filter: bool,
+                 host: str, ua: str, pair_strategy: str,
+                 local_rcsb_database: Optional[str]) -> SeqResult:
+    """提交一条序列 (记录) 并整理该任务的结果到 out_dir/<name>/。
+
+    多链 complex (':' 分隔) 时把每条链拆成独立记录提交 (ColabFold
+    服务器在记录之间做配对)，返回后把各链段合并为整复合物 a3m。
+    """
+    chains = seq.split(":") if ":" in seq else [seq]
+    job_dir = os.path.join(out_dir, name)
+    os.makedirs(job_dir, exist_ok=True)
+    tmp = tempfile.mkdtemp(dir=out_dir, prefix=".tmp_")
+    try:
+        a3m_files: List[str] = []
+        Ms: List[int] = []
+
+        # ── paired 部分 ──────────────────────────────
+        if pair_mode in ("paired", "paired+unpaired"):
+            tar_gz, Ms = _submit_and_download(
+                chains, tmp, "ticket/pair", _paired_mode(use_env, pair_strategy),
+                host, ua, tar_name="out_paired.tar.gz")
+            _extract_and_clean(tar_gz, tmp)
+            src = os.path.join(tmp, "pair.a3m")
+            if os.path.isfile(src):
+                text = _merge_paired_a3m(_read_a3m_lines(src), len(chains))
+                dst = os.path.join(job_dir, "pair.a3m")
+                with open(dst, "w") as f:
+                    f.write(text)
+                a3m_files.append(dst)
+
+        # ── unpaired 部分 ────────────────────────────
+        if pair_mode in ("unpaired", "paired+unpaired"):
+            tar_name = "out_unpaired.tar.gz" if pair_mode == "paired+unpaired" else "out.tar.gz"
+            tar_gz, Ms = _submit_and_download(
+                chains, tmp, "ticket/msa", _unpaired_mode(use_env, use_filter),
+                host, ua, tar_name=tar_name)
+            _extract_and_clean(tar_gz, tmp)
+            db_names = ["uniref.a3m"]
+            if use_env:
+                db_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
+            chain_lengths = [len(c) for c in chains]
+            for db in db_names:
+                src = os.path.join(tmp, db)
+                if not os.path.isfile(src):
+                    continue
+                lines = _read_a3m_lines(src)
+                if len(chains) > 1:
+                    text = _merge_unpaired_a3m(lines, chain_lengths)
+                else:
+                    text = "\n".join(lines) + "\n"
+                dst = os.path.join(job_dir, db)
+                with open(dst, "w") as f:
+                    f.write(text)
+                a3m_files.append(dst)
+
+        # ── 模板 (仅 msa ticket 附带 pdb70.m8) ────────
+        _handle_templates(tmp, out_dir, Ms, [(name, seq)], host, ua,
+                          local_rcsb_database)
+
+        # ── msa.sh ────────────────────────────────────
+        msa_sh = os.path.join(tmp, "msa.sh")
+        if os.path.isfile(msa_sh):
+            shutil.copy2(msa_sh, os.path.join(job_dir, "msa.sh"))
+
+        # ── merged.a3m + logo + coverage ─────────────
+        result = SeqResult(files=list(a3m_files), plots=[], report="")
+        if a3m_files:
+            merged_per_seq = os.path.join(job_dir, "merged.a3m")
+            parts = []
+            for f in a3m_files:
+                with open(f) as fh:
+                    parts.append(fh.read().rstrip() + "\n")
+            with open(merged_per_seq, "w") as f:
+                f.write("".join(parts))
+            result.files.append(merged_per_seq)
+
+            logo_path = os.path.join(job_dir, "logo.png")
+            _generate_logo(merged_per_seq, logo_path)
+            if os.path.isfile(logo_path):
+                result.plots.append(logo_path)
+
+            cov_path = os.path.join(job_dir, "coverage.png")
+            _generate_coverage_plot(merged_per_seq, cov_path)
+            if os.path.isfile(cov_path):
+                result.plots.append(cov_path)
+        return result
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def run_search(
     named_seqs: List[Tuple[str, str]],
     out_dir: str,
@@ -745,7 +977,13 @@ def run_search(
     Parameters
     ----------
     named_seqs : [(name, seq), ...]
-        蛋白序列列表（每项为 (序列名, 序列)）
+        蛋白序列列表（每项为 (序列名, 序列)）。每条记录 = 一个独立任务
+        (各自提交):
+        - 单链: 序列本身;
+        - 多链 complex: 序列以 ':' 分隔各链 (ColabFold 约定, 如
+          "AAA:BBB")。提交时每条链拆成一个记录 (>101, >102, ...),
+          服务器端配对, 结果合并为该 complex 的一份 a3m。
+        注意: 多条记录之间互不配对 (各自独立搜索)。
     out_dir : str
         输出目录
     pair_mode : str
@@ -766,153 +1004,16 @@ def run_search(
     """
     os.makedirs(out_dir, exist_ok=True)
 
-    seqs_only = [s for _, s in named_seqs]
-
-    # ── 确定 endpoint / mode ──────────────────────────
-    def _unpaired_mode() -> str:
-        if use_filter:
-            return "env" if use_env else "all"
-        return "env-nofilter" if use_env else "nofilter"
-
-    def _paired_mode() -> str:
-        m = "paircomplete" if pair_strategy == "complete" else "pairgreedy"
-        return m + "-env" if use_env else m
-
-    # ── 收集结果 ──────────────────────────────────────
     per_seq_result: Dict[str, SeqResult] = {}
-    templates_map: Optional[dict] = None
-
-    if pair_mode == "paired":
-        tar_gz, Ms = _submit_and_download(seqs_only, out_dir, "ticket/pair",
-                                          _paired_mode(), host, ua,
-                                          tar_name="out_paired.tar.gz")
-        _extract_and_clean(tar_gz, out_dir)
-        db_names = ["pair.a3m"]
-    elif pair_mode == "paired+unpaired":
-        # unpaired
-        tar_gz_u, Ms_u = _submit_and_download(seqs_only, out_dir, "ticket/msa",
-                                              _unpaired_mode(), host, ua,
-                                              tar_name="out_unpaired.tar.gz")
-        _extract_and_clean(tar_gz_u, out_dir)
-        # paired
-        tar_gz_p, Ms_p = _submit_and_download(seqs_only, out_dir, "ticket/pair",
-                                              _paired_mode(), host, ua,
-                                              tar_name="out_paired.tar.gz")
-        _extract_and_clean(tar_gz_p, out_dir)
-        # Ms 用于拆分，unpaired 和 paired 的编号一致（都从 N=101 开始）
-        Ms = Ms_u
-        db_names = ["uniref.a3m", "pair.a3m"]
-        if use_env:
-            db_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
-    else:  # unpaired
-        tar_gz, Ms = _submit_and_download(seqs_only, out_dir, "ticket/msa",
-                                          _unpaired_mode(), host, ua)
-        _extract_and_clean(tar_gz, out_dir)
-        db_names = ["uniref.a3m"]
-        if use_env:
-            db_names.append("bfd.mgnify30.metaeuk30.smag30.a3m")
-
-    # ── 模板解析 ──────────────────────────────────────
-    pdb70_m8 = os.path.join(out_dir, "pdb70.m8")
-    chain_templates: Dict[int, List[Tuple[str, Optional[str]]]] = {}  # M → [(pdb_id, chain)]
-    chain_m8_lines: Dict[int, List[str]] = {}                         # M → [raw_line]
-    if os.path.isfile(pdb70_m8):
-        with open(pdb70_m8) as f:
-            for line in f:
-                line = line.rstrip()
-                if not line:
-                    continue
-                parts = line.split()
-                if len(parts) >= 4:
-                    M = int(parts[0])
-                    target = parts[1]
-                    # pdb70 数据库目标 ID 格式: "1abc" 或 "1abc_A"
-                    chain: Optional[str] = None
-                    pdb_id = target
-                    if "_" in target:
-                        pdb_id, chain = target.split("_", 1)
-                    chain_templates.setdefault(M, []).append((pdb_id, chain))
-                    chain_m8_lines.setdefault(M, []).append(line)
-        os.remove(pdb70_m8)  # 删除未拆分的 .m8
-        print(f"  [→] 模板搜索: {sum(len(v) for v in chain_templates.values())} 个 hit",
-              file=sys.stderr)
-
-    # ── 创建每条序列的子目录 ──────────────────────────
-    seq_dirs: List[str] = []
-    for i, (name, _) in enumerate(named_seqs):
-        seq_dir = os.path.join(out_dir, name)
-        os.makedirs(seq_dir, exist_ok=True)
-        seq_dirs.append(seq_dir)
-        per_seq_result[name] = SeqResult(files=[], plots=[], report="")
-
-    # ── 复制 msa.sh 到每条序列的子目录 ────────────────
-    msa_sh = os.path.join(out_dir, "msa.sh")
-    if os.path.isfile(msa_sh):
-        for seq_dir in seq_dirs:
-            shutil.copy2(msa_sh, os.path.join(seq_dir, "msa.sh"))
-        os.remove(msa_sh)
-
-    # ── 按数据库拆分成链独立文件 ──────────────────────
-    for db_name in db_names:
-        db_path = os.path.join(out_dir, db_name)
-        if not os.path.isfile(db_path):
-            continue
-        written = _split_a3m_by_chain(db_path, Ms, seq_dirs, db_label=db_name.replace(".a3m", ""))
-        for i, (name, _) in enumerate(named_seqs):
-            M = Ms[i] if i < len(Ms) else -1
-            if M in written:
-                result = per_seq_result[name]
-                result.files.append(written[M])
-        # 清理原始未拆分文件
-        os.remove(db_path)
-
-    # ── 拆分 .m8 到每条序列的子目录 ──────────────────
-    for i, (name, _) in enumerate(named_seqs):
-        M = Ms[i] if i < len(Ms) else -1
-        if M not in chain_m8_lines:
-            continue
-        seq_dir = os.path.join(out_dir, name)
-        m8_path = os.path.join(seq_dir, "pdb70.m8")
-        with open(m8_path, "w") as f:
-            for raw_line in chain_m8_lines[M]:
-                f.write(raw_line + "\n")
-
-    # ── 下载/复制模板 → 按链拆分 ────────────────────
-    _download_and_split_templates(
-        chain_templates, Ms, named_seqs, out_dir, host, ua,
-        local_rcsb_database=local_rcsb_database,
-    )
-
-    # ── 生成 per-seq merged.a3m + 绘图 ──────────────
-    for i, (name, _) in enumerate(named_seqs):
-        result = per_seq_result[name]
-        if not result.files:
-            continue
-        seq_dir = os.path.join(out_dir, name)
-        merged_per_seq = os.path.join(seq_dir, "merged.a3m")
-        parts = []
-        for f in result.files:
-            with open(f) as fh:
-                parts.append(fh.read().rstrip() + "\n")
-        with open(merged_per_seq, "w") as f:
-            f.write("".join(parts))
-        result.files.append(merged_per_seq)
-
-        # logo
-        logo_path = os.path.join(seq_dir, "logo.png")
-        _generate_logo(merged_per_seq, logo_path)
-        if os.path.isfile(logo_path):
-            result.plots.append(logo_path)
-
-        # coverage
-        cov_path = os.path.join(seq_dir, "coverage.png")
-        _generate_coverage_plot(merged_per_seq, cov_path)
-        if os.path.isfile(cov_path):
-            result.plots.append(cov_path)
-
-    return SearchResult(per_seq=per_seq_result,
-                        merged="",
-                        templates=chain_templates if chain_templates else None)
+    for name, seq in named_seqs:
+        print(f"[→] 任务 {name}: {seq.count(':') + 1} 条链", file=sys.stderr)
+        per_seq_result[name] = _run_one_job(
+            name, seq, out_dir,
+            pair_mode=pair_mode, use_env=use_env, use_filter=use_filter,
+            host=host, ua=ua, pair_strategy=pair_strategy,
+            local_rcsb_database=local_rcsb_database,
+        )
+    return SearchResult(per_seq=per_seq_result, merged="", templates=None)
 
 
 # ── FASTA / 验证 ─────────────────────────────────────
@@ -942,13 +1043,17 @@ def parse_fasta(text: str) -> List[Tuple[str, str]]:
 
 
 def validate(seqs: List[Tuple[str, str]]) -> None:
-    """验证序列只含合法氨基酸字符 (接受 [(name, seq)] 格式)"""
+    """验证序列只含合法氨基酸字符 (接受 [(name, seq)] 格式)
+
+    多链序列以 ':' 分隔各链 (ColabFold 多链约定，如 "AAA:BBB")，逐链验证。
+    """
     aas = set("ACDEFGHIKLMNPQRSTVWY")
     for i, (name, s) in enumerate(seqs, 1):
-        bad = set(s.upper()) - aas
-        if bad:
-            print(f"错误: 序列 '{name}' 含非法字符: {bad}", file=sys.stderr)
-            sys.exit(1)
+        for chain in s.upper().split(":"):
+            bad = set(chain) - aas
+            if bad:
+                print(f"错误: 序列 '{name}' 含非法字符: {bad}", file=sys.stderr)
+                sys.exit(1)
 
 
 def merge_a3m(file_list: List[str]) -> str:
