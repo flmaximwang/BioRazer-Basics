@@ -163,6 +163,40 @@ class TestCliEndToEnd:
             ">q\nACDEFGHIKL\n>s1\nACD-FGHIKL\n>s2\nACDEFGHI-L\n",
         )
 
+    def test_plot_msa_coverage_a3m(self, tmp_path):
+        """a3m 风格输入 (小写插入列, 原始长度不等): 自动去除小写后出图。"""
+        self._run(
+            ["plot-msa-coverage", "--part-lengths", "10"],
+            tmp_path,
+            ">q\nACDEFGHIKL\n>s1\nACDEFGHIKtL\n>s2\nACDEfFGHIKL\n",
+        )
+
+
+class TestStripA3mInsertions:
+    """_strip_a3m_insertions: 去除 a3m 小写插入列, 不动原始列表。"""
+
+    @staticmethod
+    def _strip(seqs):
+        from biorazer.sequence.analysis.align.plot.msa_coverage import (
+            _strip_a3m_insertions,
+        )
+
+        return _strip_a3m_insertions(seqs)
+
+    def test_no_lowercase_returns_same_list(self):
+        seqs = ["ACD-FGHIKL", "ACDEFGHI-L"]
+        assert self._strip(seqs) is seqs
+
+    def test_strips_lowercase_and_keeps_gaps(self):
+        seqs = ["ACDEFGHIKL", "ACd-FgHIKL"]
+        assert self._strip(seqs) == ["ACDEFGHIKL", "AC-FHIKL"]
+        assert seqs == ["ACDEFGHIKL", "ACd-FgHIKL"]  # 原列表未被修改
+
+    def test_equal_length_after_strip(self):
+        seqs = ["MKTAYIAKQR", "MKTAYIAKQRapt", "MKTAYIAKQRtt"]
+        stripped = self._strip(seqs)
+        assert len({len(s) for s in stripped}) == 1
+
 
 class TestSeqlogoNumbering:
     """renumber_res / res_id_range / first_tick_id / mark_res_ids 的编号与过滤

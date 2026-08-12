@@ -136,11 +136,22 @@ def _parse_figsize(spec):
         sys.exit(f"error: --figsize 需为 WxH 格式 (如 10x5), got {spec!r}")
 
 
+def _strip_a3m_insertions(seqs):
+    """去除序列中的小写字母 (a3m 插入列), 返回副本列表; 无小写时原样返回。
+
+    a3m/带插入的 FASTA 中, 小写字母表示相对查询的插入位, 各序列长度因此
+    不一致; 去掉小写后所有序列回到等长的核心比对列。
+    """
+    if not any(c.islower() for s in seqs for c in s):
+        return seqs
+    return ["".join(c for c in s if not c.islower()) for s in seqs]
+
+
 def _gapped_to_alignment(seqs):
     """等长(可含 '-')序列列表 -> biotite Alignment,供 plot-msa-coverage 使用"""
     length = len(seqs[0])
     if any(len(s) != length for s in seqs):
-        sys.exit("error: 输入序列必须等长 (已比对, 可含 '-' 空位)")
+        sys.exit("error: 输入序列必须等长 (已比对, 可含 '-' 空位; 小写插入列会被自动去除, 若仍不等长说明输入异常)")
     ungapped = [s.replace("-", "") for s in seqs]
     trace = np.full((length, len(seqs)), -1, dtype=int)
     for i, s in enumerate(seqs):
@@ -160,7 +171,7 @@ def _add_msa_coverage_parser(sub):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("-i", "--input", required=True, metavar="FASTA",
-                   help="输入 FASTA (已比对等长序列, 可含 '-' 空位)")
+                   help="输入 FASTA/a3m (已比对等长序列, 可含 '-' 空位; 小写插入列将自动去除)")
     p.add_argument("-o", "--output", required=True, metavar="PNG",
                    help="输出 PNG")
     p.add_argument("--part-lengths", metavar="N,N,...", default=None,
@@ -183,6 +194,9 @@ def _run_msa_coverage(args) -> None:
     seqs = list(seq_dict.values())
     if not seqs:
         sys.exit(f"error: {args.input} 中没有序列")
+    if any(c.islower() for s in seqs for c in s):
+        print("检测到小写字母 (a3m 插入列), 已去除后绘图")
+        seqs = _strip_a3m_insertions(seqs)
     msa = _gapped_to_alignment(seqs)
     part_lengths = _parse_int_list(args.part_lengths, "--part-lengths") or []
     plot_msa_coverage(
