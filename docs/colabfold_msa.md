@@ -11,7 +11,7 @@
 ### 单链 MSA
 
 ```python
-from biorazer.sequence.protein.analysis.align.query import run_search
+from biorazer.access.server.colabfold_msa.pipeline import run_search
 
 result = run_search(
     [("my_protein", "MTSENLYFQGAMGSMTSENLYFQGAMG")],
@@ -42,7 +42,8 @@ result = run_search(
 ### 从 FASTA 文件读取
 
 ```python
-from biorazer.sequence.protein.analysis.align.query import parse_fasta, run_search
+from biorazer.access.server.colabfold_msa.io import parse_fasta
+from biorazer.access.server.colabfold_msa.pipeline import run_search
 
 with open("input.fasta") as f:
     named_seqs = parse_fasta(f.read())
@@ -191,12 +192,20 @@ msa_out/
 ## 与项目现有 MSA 工具的关系
 
 ```
-biorazer/sequence/protein/analysis/align/
-├── query/               ← 本模块: MSA 生成（调用 ColabFold API）
-├── io.py                ← 读取 A3M 文件（A3M2ALIGN → biotite Alignment）
-├── plot.py              ← 可视化 MSA（coverage + 序列比对图）
-├── report.py            ← MSA 分析报告
-└── util.py              ← 对齐工具函数
+biorazer/access/server/colabfold_msa/   ← 本模块: MSA 生成 (调用 ColabFold API)
+├── http.py        ← HTTP 传输层 (POST/GET/下载, 纯 stdlib urllib)
+├── api.py         ← MMseqs2 API 任务生命周期: 提交 → 轮询 → 下载
+├── io.py          ← FASTA/A3M 解析、合并 (parse_fasta/validate/merge_a3m)
+├── paired.py      ← 多链配对 (paired) 提交与结果合并
+├── unpaired.py    ← 非配对 (unpaired) 提交与结果整理
+├── template.py    ← 模板搜索: pdb70.m8 分发 + CIF 按链拆分 (网络/本地镜像)
+├── pipeline.py    ← 流水线编排: run_search / SeqResult / SearchResult
+└── cli.py         ← colabfold-msa 子命令 (register_subcommand)
+
+biorazer/sequence/analysis/alignment/
+├── plot.py        ← 可视化 MSA (coverage + 序列比对图)
+├── report.py      ← MSA 分析报告
+└── util.py        ← 对齐工具函数
 ```
 
 其他 MSA 相关脚本：
