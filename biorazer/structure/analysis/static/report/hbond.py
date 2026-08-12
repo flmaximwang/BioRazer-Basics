@@ -3,7 +3,7 @@ from biotite import structure as bio_struct
 from biorazer.display import print_with_decoration, print_decoration_line
 from biorazer.structure.util.report_utils import _to_pymol_atom_selector
 from .util import _normalize_fmt
-from .. import check, select
+from .. import check, selection
 
 
 def report_hbonds(
@@ -103,7 +103,7 @@ def report_buried_unsat_hbonds(
 
     fmt = _normalize_fmt(fmt, ("pymol",))
 
-    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = select.mask_buried_unsat_hbond_atoms(
+    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = selection.mask_buried_unsat_hbond_atoms(
         atom_array, selection1=selection1, selection2=selection2, **kwargs
     )
 

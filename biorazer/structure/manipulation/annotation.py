@@ -1,7 +1,7 @@
 import numpy as np
 import biotite.structure as bio_struct
 
-from ..selector.index import group_atoms_by_residue
+from ..selection.index import group_atoms_by_residue
 
 
 _WATER_RES_NAMES = {"HOH", "WAT", "DOD"}

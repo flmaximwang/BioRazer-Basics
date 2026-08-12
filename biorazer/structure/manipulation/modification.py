@@ -2,7 +2,7 @@ import numpy as np
 import biotite.structure as bio_struct
 import hydride
 
-from ..selector.index import group_atoms_by_residue
+from ..selection.index import group_atoms_by_residue
 from .util import (
     _ensure_common_annotations,
     _selected_residues,

@@ -1,6 +1,6 @@
 import numpy as np
 import biotite.structure as bio_struct
-from .. import report, select
+from .. import report, selection
 
 
 def sasa_array(
@@ -42,7 +42,7 @@ def buried_unsat_hbond(
     interface_kwargs=dict(distance_cutoff=3.5),
     hbond_kwargs=dict(),
 ):
-    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = select.mask_buried_unsat_hbond_atoms(
+    unsat_hbond_mask_1, unsat_hbond_mask_2, _ = selection.mask_buried_unsat_hbond_atoms(
         atom_array,
         selection1=selection1,
         selection2=selection2,

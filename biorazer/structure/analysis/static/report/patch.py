@@ -9,7 +9,7 @@ from scipy.spatial import KDTree
 
 from biorazer.display import print_decoration_line, print_with_decoration
 from biorazer.database.amino_acid import TYPES2AA
-from ..calculate.array import sasa_array
+from ..calculation.array import sasa_array
 from .util import _normalize_fmt
 
 
