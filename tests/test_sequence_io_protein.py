@@ -1,7 +1,7 @@
 """Tests for biorazer.sequence.io.protein A3M converters.
 
 A3m_Alignment / Alignment_A3m were merged from
-biorazer.sequence.analysis.align.io (now removed).
+biorazer.sequence.analysis.alignment.io (now removed).
 """
 
 import importlib
@@ -33,7 +33,7 @@ class TestA3mImportLocation:
 
     def test_old_align_io_module_removed(self):
         with pytest.raises(ModuleNotFoundError):
-            importlib.import_module("biorazer.sequence.analysis.align.io")
+            importlib.import_module("biorazer.sequence.analysis.alignment.io")
 
 
 class TestA3mRead:

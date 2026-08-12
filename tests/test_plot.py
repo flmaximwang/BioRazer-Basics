@@ -1,4 +1,4 @@
-"""Tests for biorazer.sequence.analysis.align.plot 模块拆分。
+"""Tests for biorazer.sequence.analysis.alignment.plot 模块拆分。
 
 plot 包已拆分为 msa / msa_coverage / seqlogo 三个子模块:
 每个模块自包含绘图 API 与对应 CLI (parser/runner);
@@ -14,24 +14,24 @@ matplotlib.use("Agg")  # 无显示环境, 必须先于 pyplot 导入
 
 import pytest
 
-from biorazer.sequence.analysis.align.plot import (
+from biorazer.sequence.analysis.alignment.plot import (
     plot_msa,
     plot_msa_coverage,
     plot_seqlogo,
 )
-from biorazer.sequence.analysis.align.plot.msa import plot_msa as _sub_plot_msa
-from biorazer.sequence.analysis.align.plot.msa_coverage import (
+from biorazer.sequence.analysis.alignment.plot.msa import plot_msa as _sub_plot_msa
+from biorazer.sequence.analysis.alignment.plot.msa_coverage import (
     plot_msa_coverage as _sub_plot_msa_coverage,
 )
-from biorazer.sequence.analysis.align.plot.seqlogo import (
+from biorazer.sequence.analysis.alignment.plot.seqlogo import (
     plot_seqlogo as _sub_plot_seqlogo,
 )
-from biorazer.sequence.analysis.align.plot.seqlogo import _plot_sequence_logo_freq
+from biorazer.sequence.analysis.alignment.plot.seqlogo import _plot_sequence_logo_freq
 
 
 def _build_plot_parser():
     """构建注册了三个 plot 子命令的 argparse parser,返回 (parser, subparsers, plot_cli)。"""
-    from biorazer.sequence.analysis.align.plot import cli as plot_cli
+    from biorazer.sequence.analysis.alignment.plot import cli as plot_cli
 
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command")
@@ -44,7 +44,7 @@ class TestModuleSplit:
 
     def test_all_exports(self):
         """__all__ 列出且仅列出三个公共函数。"""
-        import biorazer.sequence.analysis.align.plot as plot_pkg
+        import biorazer.sequence.analysis.alignment.plot as plot_pkg
 
         assert plot_pkg.__all__ == ["plot_msa_coverage", "plot_msa", "plot_seqlogo"]
         assert set(plot_pkg.__all__) <= set(dir(plot_pkg))
@@ -63,8 +63,8 @@ class TestModuleSplit:
         assert callable(_plot_sequence_logo_freq)
 
     def test_star_import_via_align(self):
-        """align 包 `from .plot import *` 仍能拿到三个函数。"""
-        from biorazer.sequence.analysis.align import plot_msa as _align_plot_msa
+        """alignment 包 `from .plot import *` 仍能拿到三个函数。"""
+        from biorazer.sequence.analysis.alignment import plot_msa as _align_plot_msa
 
         assert _align_plot_msa is plot_msa
 
@@ -87,7 +87,7 @@ class TestCliSplit:
 
     def test_subcommand_impls_live_in_plot_modules(self):
         """三个子命令的 parser/runner 定义在对应绘图模块。"""
-        from biorazer.sequence.analysis.align.plot import msa, msa_coverage, seqlogo
+        from biorazer.sequence.analysis.alignment.plot import msa, msa_coverage, seqlogo
 
         assert callable(seqlogo._add_seqlogo_parser) and callable(seqlogo._run_seqlogo)
         assert callable(msa._add_msa_parser) and callable(msa._run_msa)
@@ -96,7 +96,7 @@ class TestCliSplit:
 
     def test_parser_wired_to_module_runner(self):
         """每个子命令的 func 指向对应模块的 runner。"""
-        from biorazer.sequence.analysis.align.plot import msa, msa_coverage, seqlogo
+        from biorazer.sequence.analysis.alignment.plot import msa, msa_coverage, seqlogo
 
         _, sub, _ = _build_plot_parser()
         assert sub.choices["plot-seqlogo"].get_default("func") is seqlogo._run_seqlogo
@@ -177,7 +177,7 @@ class TestStripA3mInsertions:
 
     @staticmethod
     def _strip(seqs):
-        from biorazer.sequence.analysis.align.plot.msa_coverage import (
+        from biorazer.sequence.analysis.alignment.plot.msa_coverage import (
             _strip_a3m_insertions,
         )
 
@@ -481,7 +481,7 @@ class TestSeqlogoNumbering:
         """_pad_profile_left: 前补 n 列全空列, 原符号与 gap 计数保留。"""
         import numpy as np
 
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _pad_profile_left,
         )
 
@@ -506,7 +506,7 @@ class TestSeqlogoCliNumbering:
         return parser.parse_args(argv)
 
     def test_renumber_res_p_id_single_chain(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_renumber_res,
         )
 
@@ -515,7 +515,7 @@ class TestSeqlogoCliNumbering:
         ) == {0: {0: 8, 20: 31}}
 
     def test_renumber_res_p_id_multi_chain_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_renumber_res,
         )
 
@@ -523,7 +523,7 @@ class TestSeqlogoCliNumbering:
             _parse_renumber_res("0_8", "--renumber-res", 2)
 
     def test_renumber_res_c_p_id(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_renumber_res,
         )
 
@@ -532,7 +532,7 @@ class TestSeqlogoCliNumbering:
         ) == {0: {0: 1, 20: 31}, 1: {0: 1}}
 
     def test_renumber_res_plain_int_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_renumber_res,
         )
 
@@ -543,7 +543,7 @@ class TestSeqlogoCliNumbering:
             _parse_renumber_res("8,34", "--renumber-res", 2)
 
     def test_renumber_res_mixed_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_renumber_res,
         )
 
@@ -551,14 +551,14 @@ class TestSeqlogoCliNumbering:
             _parse_renumber_res("0_8,0_0_1", "--renumber-res", 1)
 
     def test_res_id_range_single_chain(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_res_id_range,
         )
 
         assert _parse_res_id_range("28_106", "--res-id-range", 1) == (28, 106)
 
     def test_res_id_range_multi_chain_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_res_id_range,
         )
 
@@ -566,7 +566,7 @@ class TestSeqlogoCliNumbering:
             _parse_res_id_range("28_106", "--res-id-range", 2)
 
     def test_res_id_range_per_chain(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_res_id_range,
         )
 
@@ -575,7 +575,7 @@ class TestSeqlogoCliNumbering:
         ) == {0: (28, 106), 1: (34, 45)}
 
     def test_res_id_range_mixed_global_per_chain(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_res_id_range,
         )
 
@@ -583,7 +583,7 @@ class TestSeqlogoCliNumbering:
             _parse_res_id_range("28_106,1_34_45", "--res-id-range", 2)
 
     def test_first_tick_id_single(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_first_tick_id,
         )
 
@@ -591,7 +591,7 @@ class TestSeqlogoCliNumbering:
         assert _parse_first_tick_id(None, "--first-tick-id", 1) is None
 
     def test_first_tick_id_cn(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_first_tick_id,
         )
 
@@ -600,7 +600,7 @@ class TestSeqlogoCliNumbering:
         ) == {0: 101, 1: 105}
 
     def test_first_tick_id_multi_chain_plain_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_first_tick_id,
         )
 
@@ -608,7 +608,7 @@ class TestSeqlogoCliNumbering:
             _parse_first_tick_id("100", "--first-tick-id", 2)
 
     def test_first_tick_id_invalid(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_first_tick_id,
         )
 
@@ -623,7 +623,7 @@ class TestSeqlogoCliNumbering:
         assert _parse_first_tick_id("1_00", "--first-tick-id", 1) == {1: 0}
 
     def test_mark_res_ids_single_chain(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_mark_res_ids,
         )
 
@@ -632,7 +632,7 @@ class TestSeqlogoCliNumbering:
         ) == [109, 131, 137]
 
     def test_mark_res_ids_cn(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_mark_res_ids,
         )
 
@@ -641,7 +641,7 @@ class TestSeqlogoCliNumbering:
         ) == {0: [109, 131], 1: [164]}
 
     def test_mark_res_ids_multi_chain_plain_rejected(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_mark_res_ids,
         )
 
@@ -649,7 +649,7 @@ class TestSeqlogoCliNumbering:
             _parse_mark_res_ids("109,131", "--mark-res-ids", 2)
 
     def test_mark_res_ids_invalid(self):
-        from biorazer.sequence.analysis.align.plot.seqlogo import (
+        from biorazer.sequence.analysis.alignment.plot.seqlogo import (
             _parse_mark_res_ids,
         )
 

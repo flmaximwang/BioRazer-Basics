@@ -1,18 +1,16 @@
-"""Tests for biorazer.sequence.protein.analysis.align.query.colabfold_api."""
+"""Tests for biorazer.access.server.colabfold_msa (重构自 sequence/.../query/colabfold_api.py)。"""
 
+import argparse
+import importlib
 import os
+import subprocess
+import sys
 import tempfile
 import pytest
 
-from biorazer.sequence.analysis.align.query.colabfold_api import (
-    DEFAULT_HOST,
-    DEFAULT_UA,
-    parse_fasta,
-    validate,
-    merge_a3m,
-    SeqResult,
-    SearchResult,
-)
+from biorazer.access.server.colabfold_msa.http import DEFAULT_HOST, DEFAULT_UA
+from biorazer.access.server.colabfold_msa.io import merge_a3m, parse_fasta, validate
+from biorazer.access.server.colabfold_msa.pipeline import SearchResult, SeqResult
 
 
 class TestParseFasta:
@@ -141,3 +139,47 @@ class TestConstants:
 
 
 # run_search 需要 mock HTTP 请求，纯函数测试见上。
+
+
+class TestImportLocation:
+    """重构身份验证: 新路径的模块可导入, 旧路径 (alignment/query) 已删除。"""
+
+    def test_old_align_query_module_removed(self):
+        """旧路径 biorazer.sequence.analysis.alignment.query.colabfold_api 必须不复存在。"""
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("biorazer.sequence.analysis.alignment.query.colabfold_api")
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("biorazer.sequence.analysis.alignment.query")
+
+    def test_new_modules_importable(self):
+        """拆分后的各 module 均可独立导入。"""
+        importlib.import_module("biorazer.access.server.colabfold_msa.api")
+        importlib.import_module("biorazer.access.server.colabfold_msa.cli")
+        importlib.import_module("biorazer.access.server.colabfold_msa.http")
+        importlib.import_module("biorazer.access.server.colabfold_msa.io")
+        importlib.import_module("biorazer.access.server.colabfold_msa.paired")
+        importlib.import_module("biorazer.access.server.colabfold_msa.pipeline")
+        importlib.import_module("biorazer.access.server.colabfold_msa.template")
+        importlib.import_module("biorazer.access.server.colabfold_msa.unpaired")
+
+
+class TestCliWiring:
+    """CLI 接线: colabfold-msa 经新位置注册到 biorazer 顶层入口。"""
+
+    def test_subcommand_registered(self):
+        from biorazer.access.server.colabfold_msa import cli
+
+        parser = argparse.ArgumentParser(prog="biorazer")
+        sub = parser.add_subparsers(dest="command")
+        cli.register_subcommand(sub)
+        assert "colabfold-msa" in sub.choices
+        assert sub.choices["colabfold-msa"].get_default("func") is cli._run_colabfold
+
+    def test_top_level_cli_help_lists_colabfold_msa(self):
+        """经 biorazer.cli 主入口 (最上层消费路径) 可见该子命令。"""
+        result = subprocess.run(
+            [sys.executable, "-m", "biorazer.cli", "--help"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "colabfold-msa" in result.stdout
