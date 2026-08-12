@@ -23,15 +23,21 @@ result = run_search(
 
 ### 多链配对 MSA（用于 AF3 / OpenDDE 多聚体）
 
+ColabFold 多链约定: **一条记录内以 `:` 分隔各链** (如 `>complex\nAAA:BBB`),
+提交时每条链拆成独立记录 (`>101`, `>102`, ...) 到配对端点, 服务器端配对,
+返回后合并为整复合物的一份 a3m。
+
 ```python
 result = run_search(
-    [("heavy", "EVQLVESGGGLVQPGGSLRLSCAASGFTFS"),   # 重链
-     ("light", "DIQMTQSPSSLSASVGDRVTITCRASQGIR")],   # 轻链
+    [("complex", "EVQLVESGGGLVQPGGSLRLSCAASGFTFS:DIQMTQSPSSLSASVGDRVTITCRASQGIR")],
     "ab_msa/",
     pair_mode="paired",
 )
-# 输出: ab_msa/heavy/pair.a3m, ab_msa/light/pair.a3m
+# 输出: ab_msa/complex/pair.a3m  (整复合物配对 MSA, 每行 = 各链拼接)
 ```
+
+注意: 多条记录 = 多个独立任务 (各自提交, 互不配对)。同一复合物的多链
+必须写在**一条记录**里用 `:` 分隔, 不要拆成多条记录。
 
 ### 从 FASTA 文件读取
 
@@ -112,7 +118,7 @@ parse_fasta(text: str) -> List[Tuple[str, str]]
 
 ### `validate()`
 
-验证序列只含 20 种标准氨基酸字符 (`ACDEFGHIKLMNPQRSTVWY`)。
+验证序列只含 20 种标准氨基酸字符 (`ACDEFGHIKLMNPQRSTVWY`)。多链序列以 `:` 分隔各链（ColabFold 多链约定，如 `>complex\nAAA:BBB`），逐链验证。
 
 ```python
 validate(seqs: List[Tuple[str, str]]) -> None
