@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from biorazer.access import cli
-from biorazer.access.AFDB import files as afdb_files
-from biorazer.access.AFDB.info import AFDBEntry
+from biorazer.access.database.AFDB import files as afdb_files
+from biorazer.access.database.AFDB.info import AFDBEntry
 
 
 def _build_parser():
