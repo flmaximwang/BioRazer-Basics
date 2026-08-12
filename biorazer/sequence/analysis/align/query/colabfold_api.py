@@ -30,6 +30,8 @@ colabfold_api - 调用 ColabFold MMseqs2 公共 API 生成蛋白 MSA (A3M)
 """
 
 import argparse
+import gzip
+import io
 import json
 import os
 import random
@@ -44,8 +46,10 @@ from urllib.error import URLError, HTTPError
 import matplotlib.pyplot as plt
 from biotite.sequence.graphics import plot_sequence_logo
 from biotite.sequence.profile import SequenceProfile
+from biotite.structure import AtomArray
 
 from biorazer.sequence.io import A3m_Alignment
+from biorazer.structure.io.protein import AtomArray_Cif, Pdb_AtomArray
 from ..plot import plot_msa_coverage
 
 # ── 默认值 ──────────────────────────────────────────
@@ -321,17 +325,35 @@ def _extract_chain_from_cif(cif_path: str, chain: str, out_path: str) -> bool:
         return False
 
 
-def _download_and_split_templates(
+# ── 本地 RCSB 镜像读取 ──────────────────────────────
+def _find_local_pdb(db_root: str, pdb_id: str) -> Optional[str]:
+    """在本地 RCSB rsync 镜像中定位 PDB 文件。
+
+    标准 RCSB divided 布局: {db_root}/{id[1:3]}/pdb{id}.ent.gz
+    (由 rsync.rcsb.org:33444 ftp_data/structures/divided/pdb/ 同步而来)。
+    """
+    if len(pdb_id) < 3:
+        return None
+    candidates = [
+        os.path.join(db_root, pdb_id[1:3], f"pdb{pdb_id}.ent.gz"),
+        os.path.join(db_root, pdb_id[1:3], f"pdb{pdb_id}.ent"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def _split_templates_from_local(
     chain_templates: Dict[int, List[Tuple[str, Optional[str]]]],
     Ms: List[int],
     named_seqs: List[Tuple[str, str]],
     out_dir: str,
-    host: str, ua: str,
+    db_root: str,
 ) -> None:
-    """从 RCSB PDB 下载 CIF → 按链拆分到各序列的 templates/ 目录。
+    """从本地 RCSB 镜像读取 PDB → 转 CIF → 按链拆分到各序列的 templates/ 目录。
 
-    使用 https://files.rcsb.org/download/{pdb_id}.cif 下载。
-    自动通过 http_proxy/https_proxy 环境变量使用代理。
+    与下载模式输出格式一致 (CIF)，只把网络下载替换为本地读取。
     """
     # 收集所有不重复的 PDB ID
     all_pdbs: set = set()
@@ -339,6 +361,104 @@ def _download_and_split_templates(
         for pdb_id, _ in entries:
             all_pdbs.add(pdb_id.lower())
     if not all_pdbs:
+        return
+
+    pdb_list = sorted(all_pdbs)
+    total = len(pdb_list)
+    print(f"  [→] 本地模板: {total} 个 PDB (镜像 {db_root})", file=sys.stderr)
+
+    cache = os.path.join(out_dir, ".template_cache")
+    os.makedirs(cache, exist_ok=True)
+
+    # 逐个从本地镜像读取 PDB → AtomArray
+    arrays: Dict[str, AtomArray] = {}
+    missing: List[str] = []
+    for pdb_id in pdb_list:
+        src = _find_local_pdb(db_root, pdb_id)
+        if src is None:
+            missing.append(pdb_id)
+            continue
+        try:
+            if src.endswith(".gz"):
+                with gzip.open(src, "rt") as f:
+                    text = f.read()
+            else:
+                with open(src) as f:
+                    text = f.read()
+            buf = io.StringIO(text)
+            arrays[pdb_id] = Pdb_AtomArray(buf, io.StringIO()).read()
+        except Exception as e:
+            print(f"  [!] {pdb_id} 读取失败: {e}", file=sys.stderr)
+            missing.append(pdb_id)
+    if missing:
+        print(f"  [!] 本地镜像缺少: {', '.join(missing)}", file=sys.stderr)
+
+    # 为每条序列从 AtomArray 中提取对应链，转 CIF
+    chain_downloaded = 0
+    for i, (name, _) in enumerate(named_seqs):
+        M = Ms[i] if i < len(Ms) else -1
+        if M not in chain_templates:
+            continue
+        seq_dir = os.path.join(out_dir, name)
+        tpl_dir = os.path.join(seq_dir, "templates")
+        os.makedirs(tpl_dir, exist_ok=True)
+        chain_count = 0
+        for pdb_id, chain in chain_templates[M]:
+            pdb_id = pdb_id.lower()
+            arr = arrays.get(pdb_id)
+            if arr is None:
+                continue
+            try:
+                if chain:
+                    sub = arr[arr.chain_id == chain]
+                    if sub.array_length() == 0:
+                        print(f"  [!] {pdb_id} 无链 {chain}，跳过", file=sys.stderr)
+                        continue
+                    dst = os.path.join(tpl_dir, f"{pdb_id}_{chain}.cif")
+                else:
+                    sub = arr
+                    dst = os.path.join(tpl_dir, f"{pdb_id}.cif")
+                buf = io.StringIO()
+                AtomArray_Cif(io.StringIO(), buf).write(sub)
+                with open(dst, "w") as f:
+                    f.write(buf.getvalue())
+                chain_count += 1
+            except Exception as e:
+                print(f"  [!] {pdb_id} CIF 写出失败: {e}", file=sys.stderr)
+        chain_downloaded += chain_count
+        if chain_count > 0:
+            print(f"    [✓] {name}: {chain_count} 个模板 -> {tpl_dir}", file=sys.stderr)
+
+    # 清理缓存（本次未用，保留占位目录以防其它流程引用）
+    if chain_downloaded > 0:
+        print(f"  [✓] 模板: {chain_downloaded} 个 CIF (按链拆分, 本地镜像)", file=sys.stderr)
+
+
+def _download_and_split_templates(
+    chain_templates: Dict[int, List[Tuple[str, Optional[str]]]],
+    Ms: List[int],
+    named_seqs: List[Tuple[str, str]],
+    out_dir: str,
+    host: str, ua: str,
+    local_rcsb_database: Optional[str] = None,
+) -> None:
+    """从 RCSB PDB 下载或本地镜像复制 CIF → 按链拆分到各序列的 templates/ 目录。
+
+    当 local_rcsb_database 给出时，跳过网络下载，直接从本地 RCSB 镜像读取
+    (divided PDB 布局: {db}/{id[1:3]}/pdb{id}.ent.gz)，输出格式仍为 CIF。
+    """
+    # 收集所有不重复的 PDB ID
+    all_pdbs: set = set()
+    for entries in chain_templates.values():
+        for pdb_id, _ in entries:
+            all_pdbs.add(pdb_id.lower())
+    if not all_pdbs:
+        return
+
+    if local_rcsb_database:
+        _split_templates_from_local(
+            chain_templates, Ms, named_seqs, out_dir, local_rcsb_database
+        )
         return
 
     pdb_list = sorted(all_pdbs)
@@ -617,6 +737,7 @@ def run_search(
     host: str = DEFAULT_HOST,
     ua: str = DEFAULT_UA,
     pair_strategy: str = "greedy",
+    local_rcsb_database: Optional[str] = None,
 ) -> SearchResult:
     """
     调用 MMseqs2 API，返回结构化搜索结果。
@@ -639,6 +760,9 @@ def run_search(
         User-Agent
     pair_strategy : str
         "greedy"（快）或 "complete"（全）
+    local_rcsb_database : str, optional
+        本地 RCSB 镜像根目录 (divided PDB 布局，如 /mnt/data/public/RCSB)。
+        给出时模板结构直接从本地读取，不从 RCSB 下载。
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -753,8 +877,11 @@ def run_search(
             for raw_line in chain_m8_lines[M]:
                 f.write(raw_line + "\n")
 
-    # ── 下载模板 → 按链拆分 ─────────────────────────
-    _download_and_split_templates(chain_templates, Ms, named_seqs, out_dir, host, ua)
+    # ── 下载/复制模板 → 按链拆分 ────────────────────
+    _download_and_split_templates(
+        chain_templates, Ms, named_seqs, out_dir, host, ua,
+        local_rcsb_database=local_rcsb_database,
+    )
 
     # ── 生成 per-seq merged.a3m + 绘图 ──────────────
     for i, (name, _) in enumerate(named_seqs):
@@ -852,6 +979,9 @@ def register_subcommand(sub) -> argparse.ArgumentParser:
     p.add_argument("--no-filter", action="store_true", help="不做 MSA 过滤")
     p.add_argument("--pair-strategy", default="greedy",
                     choices=["greedy", "complete"], help="配对策略 (默认 greedy)")
+    p.add_argument("--local-rcsb-database", default=None, metavar="DIR",
+                    help="本地 RCSB 镜像根目录 (divided PDB 布局，如 /mnt/data/public/RCSB)。"
+                         "给出时模板结构直接从本地读取，不从 RCSB 下载 (默认 %(default)s)")
     p.add_argument("--host", default=DEFAULT_HOST, help="API 服务器地址 (默认 %(default)s)")
     p.add_argument("--debug", action="store_true", help="打印调试信息")
     p.set_defaults(func=_run_colabfold)
@@ -885,6 +1015,7 @@ def _run_colabfold(args) -> None:
         use_filter=not args.no_filter,
         host=args.host,
         pair_strategy=args.pair_strategy,
+        local_rcsb_database=args.local_rcsb_database,
     )
 
     print(f"\n[✓] 完成!", file=sys.stderr)

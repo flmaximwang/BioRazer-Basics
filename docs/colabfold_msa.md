@@ -62,6 +62,7 @@ run_search(
     host: str = "https://api.colabfold.com",
     ua: str = "colabfold_msa/2.0 ...",
     pair_strategy: str = "greedy",
+    local_rcsb_database: str | None = None,
 ) -> SearchResult
 ```
 
@@ -77,6 +78,7 @@ run_search(
 | `host` | `str` | `https://api.colabfold.com` | MMseqs2 服务器地址 |
 | `ua` | `str` | ... | User-Agent 标识 |
 | `pair_strategy` | `str` | `"greedy"` | 配对策略: `"greedy"` (快) / `"complete"` (全) |
+| `local_rcsb_database` | `str \| None` | `None` | 本地 RCSB 镜像根目录（divided PDB 布局，如 `/mnt/data/public/RCSB`）。给出时模板结构直接从本地读取，不从 RCSB 下载 |
 
 **返回值**
 
@@ -209,3 +211,4 @@ biorazer/sequence/protein/analysis/align/
 5. **tar.gz**：解压后自动删除
 6. **Sequence logo**：使用 biotite 的 `SequenceProfile` + `plot_sequence_logo` 自动生成
 7. **配对策略**：`greedy` 快但可能不是最优配对，`complete` 慢但完整
+8. **本地 RCSB 镜像**：`--local-rcsb-database DIR`（或 `run_search(local_rcsb_database=...)`）可跳过模板网络下载——从 divided PDB 镜像（`DIR/{id[1:3]}/pdb{id}.ent.gz`）直接读取，经 biotite 转 CIF 后按链拆分，输出与下载模式完全一致
