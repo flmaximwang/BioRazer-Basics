@@ -2,6 +2,7 @@
 import argparse
 import sys
 
+from biorazer.access import cli as access_cli
 from biorazer.sequence.analysis.align.query import colabfold_api
 from biorazer.sequence.analysis.align.plot import cli as plot_cli
 
@@ -15,6 +16,7 @@ def main():
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     # 注册子命令
+    access_cli.register_subcommand(sub)
     colabfold_api.register_subcommand(sub)
     plot_cli.register_subcommand(sub)
 
