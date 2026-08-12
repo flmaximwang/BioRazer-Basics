@@ -1,7 +1,7 @@
 """AlphaFold DB 预测结构文件下载。"""
 from pathlib import Path
 
-from ...logger import initialize_logger
+from ....logger import initialize_logger
 from .info import AFDBEntry
 from .query import uniprot_to_entries
 

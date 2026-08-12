@@ -12,9 +12,9 @@ from pathlib import Path
 
 import requests
 
-from biorazer.access.AFDB.files import fetch as afdb_fetch
-from biorazer.access.RCSB.files import fetch as rcsb_fetch
-from biorazer.access.uniprot.files import fetch as uniprot_fetch
+from biorazer.access.database.AFDB.files import fetch as afdb_fetch
+from biorazer.access.database.RCSB.files import fetch as rcsb_fetch
+from biorazer.access.database.uniprot.files import fetch as uniprot_fetch
 from biorazer.logger import initialize_logger
 
 # 数据来源 -> (fetch 函数, 缺省格式)
