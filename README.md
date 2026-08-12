@@ -40,7 +40,7 @@ pip install pytest pytest-cov
 Generate protein MSA by calling the ColabFold public API — zero additional dependencies, pure stdlib:
 
 ```python
-from biorazer.sequence.protein.analysis.align.query import run_search
+from biorazer.sequence.protein.analysis.alignment.query import run_search
 
 # Single-chain MSA (unpaired, default)
 files, _ = run_search(
@@ -62,7 +62,7 @@ Output: A3M files (`uniref.a3m`, `bfd.mgnify30.*.a3m`, `pair.a3m`) ready for dow
 ### MSA Visualization
 
 ```python
-from biorazer.sequence.protein.analysis.align import plot_msa
+from biorazer.sequence.protein.analysis.alignment import plot_msa
 
 fig, ax = plot_msa(
     sequences=["MTSENLYFQG", "MTSENLXFQG"],
@@ -88,8 +88,7 @@ biorazer/
 ├── sequence/       # Sequence analysis
 │   ├── nucleotide/
 │   ├── protein/
-│   │   ├── analysis/align/   # MSA generation & analysis
-│   │   │   └── query/        # ColabFold MMseqs2 API
+│   ├── analysis/alignment/   # MSA analysis & plotting
 │   │   └── scripts/          # MSA visualizer, analyzer
 │   └── translation/
 ├── structure/      # Structure analysis & I/O
