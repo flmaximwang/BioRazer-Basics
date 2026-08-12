@@ -18,7 +18,8 @@ def report_interface_residues(
     selection2,
     distance_cutoff=3.5,
     fmt="pymol",
-    model_name="",
+    pymol_model_name="",
+    pymol_selection_prefix=None,
 ):
     """
     Report interface residues between two selections of atoms in different formats.
@@ -29,6 +30,11 @@ def report_interface_residues(
         - pymol: print PyMOL commands to visualize the interface residues
         - list: return a list of tuples (chain_id, res_id)
         - text: print interface residues in text format
+    pymol_model_name : str, optional
+        PyMOL object (model) 名称, 用于构造 /model//chain/res/ 选择器。
+    pymol_selection_prefix : str, optional
+        界面 selection 的命名前缀, 生成的 selection 名为 {prefix}_interface。
+        用于在同一 model 上区分多个界面; 缺省回退为 pymol_model_name。
     """
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
@@ -45,11 +51,12 @@ def report_interface_residues(
     if fmt == "list":
         return interface_residues
     elif fmt == "pymol":
+        selection_name = f"{pymol_selection_prefix or pymol_model_name}_interface"
         print_with_decoration("Copy the command below to PyMOL", decoration_char="#")
-        print(f"select {model_name}_interface, not all")
+        print(f"select {selection_name}, not all")
         for chain_id, res_id in interface_residues:
             print(
-                f"select {model_name}_interface, /{model_name}//{chain_id}/{res_id}/ or {model_name}_interface"
+                f"select {selection_name}, /{pymol_model_name}//{chain_id}/{res_id}/ or {selection_name}"
             )
         print_decoration_line(decoration_char="#")
     elif fmt == "text":
