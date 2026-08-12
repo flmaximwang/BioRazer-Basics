@@ -2,7 +2,7 @@ import os
 from tabulate import tabulate
 
 
-def print_with_decoration(info, decoration_char="#", t_width_max=80):
+def print_with_decoration(info, decoration_char="#"):
     try:
         t_width, t_height = os.get_terminal_size()
     except OSError:
@@ -23,12 +23,11 @@ def print_with_decoration(info, decoration_char="#", t_width_max=80):
         )
 
 
-def print_decoration_line(decoration_char="#", t_width_max=80):
+def print_decoration_line(decoration_char="#"):
     try:
         t_width, t_height = os.get_terminal_size()
     except OSError:
         t_width, t_height = 80, 24
-    t_width = min(t_width, t_width_max)
     print(decoration_char * t_width)
 
 
