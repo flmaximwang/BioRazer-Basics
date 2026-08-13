@@ -2,11 +2,11 @@ import numpy as np
 import biotite.structure as bio_struct
 import hydride
 from ...selection.mask.annotation import extend_by_res as _by_res_id, revert_mask as _revert_mask
-from ...selection.mask.spatial import interface
+from ...selection.mask.spatial import distance
 from . import check
 
 
-def mask_hbond_atoms(
+def hbond_atoms(
     atom_array: bio_struct.AtomArray,
     selection_1: np.ndarray,
     selection_2: np.ndarray,
@@ -55,7 +55,7 @@ def mask_hbond_atoms(
     return hbond_mask_1, hbond_mask_2, atom_array
 
 
-def mask_buried_unsat_hbond_atoms(
+def buried_unsat_hbond_atoms(
     atom_array: bio_struct.AtomArray,
     selection1,
     selection2,
@@ -86,13 +86,13 @@ def mask_buried_unsat_hbond_atoms(
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
 
-    interface_mask_1, interface_mask_2 = interface(
+    interface_mask_1, interface_mask_2 = distance(
         atom_array, selection1, selection2, **interface_kwargs
     )
     interface_mask = interface_mask_1 | interface_mask_2
     interface_res_mask = _by_res_id(atom_array, interface_mask)
 
-    hbond_mask, _, _ = mask_hbond_atoms(
+    hbond_mask, _, _ = hbond_atoms(
         atom_array, interface_res_mask, np.ones(atom_array.shape, bool), **hbond_kwargs
     )
 

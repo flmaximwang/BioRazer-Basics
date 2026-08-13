@@ -23,7 +23,6 @@ from .mask.annotation import (
     extend_by_chain,
     shrink_by_element,
     extend_by_res,
-    by_res_name,
     intersect_masks,
     invert_mask,
     revert_mask,
@@ -42,4 +41,4 @@ from .index.annotation import (
     mask_from_indices,
 )
 from .mask import annotation, spatial
-from .mask.spatial import interface, within_distance
+from .mask.spatial import distance

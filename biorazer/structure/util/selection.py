@@ -2,7 +2,7 @@ import numpy as np
 from biotite import structure as bio_struct
 
 
-def normalize_selection(atom_array: bio_struct.AtomArray, selection):
+def _normalize_selection(atom_array: bio_struct.AtomArray, selection):
     """
     Normalize an optional selection into a boolean mask aligned with atom_array.
 

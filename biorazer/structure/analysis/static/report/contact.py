@@ -2,13 +2,13 @@ import numpy as np
 from scipy.spatial import KDTree
 from biotite import structure as bio_struct
 from biorazer.display import print_with_decoration, print_decoration_line
-from biorazer.structure.util.selection import normalize_selection
-from biorazer.structure.util.report_utils import (
+from biorazer.structure.util.selection import _normalize_selection
+from biorazer.structure.util.report import (
     _format_atom_label,
     _normalize_interface_residues,
     _to_pymol_atom_selector,
 )
-from ....selection.mask.spatial import interface
+from ....selection.mask.spatial import distance
 from .util import _normalize_fmt
 
 
@@ -38,7 +38,7 @@ def report_interface_residues(
     """
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    interface_atom_mask_1, interface_atom_mask_2 = interface(
+    interface_atom_mask_1, interface_atom_mask_2 = distance(
         atom_array,
         selection1=selection1,
         selection2=selection2,
@@ -97,8 +97,8 @@ def report_interface_contact_matrix(
 
     fmt = _normalize_fmt(fmt, ("matrix", "list", "text", "pymol"))
 
-    selection_mask_1 = normalize_selection(atom_array, selection1)
-    selection_mask_2 = normalize_selection(atom_array, selection2)
+    selection_mask_1 = _normalize_selection(atom_array, selection1)
+    selection_mask_2 = _normalize_selection(atom_array, selection2)
 
     if ignore_hydrogen:
         heavy_mask = atom_array.element != "H"
@@ -229,7 +229,7 @@ def report_intra_steric_clashes(
 
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    selection_mask = normalize_selection(atom_array, selection)
+    selection_mask = _normalize_selection(atom_array, selection)
     if ignore_hydrogen:
         selection_mask &= atom_array.element != "H"
 
@@ -309,8 +309,8 @@ def report_inter_steric_clashes(
 
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    selection_mask_1 = normalize_selection(atom_array, selection1)
-    selection_mask_2 = normalize_selection(atom_array, selection2)
+    selection_mask_1 = _normalize_selection(atom_array, selection1)
+    selection_mask_2 = _normalize_selection(atom_array, selection2)
 
     if ignore_hydrogen:
         heavy_mask = atom_array.element != "H"

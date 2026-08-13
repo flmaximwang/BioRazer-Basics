@@ -1,7 +1,8 @@
 import numpy as np
 import biotite.structure as bio_struct
 import biotite.sequence as bio_seq
-from .. import report, selection
+from .. import report
+from ....selection.mask import complex
 from .array import sasa_array, buried_unsat_hbond, hbond
 from biorazer.database.amino_acid import TYPES2AA
 

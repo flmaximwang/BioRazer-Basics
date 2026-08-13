@@ -1,28 +1,9 @@
-def _normalize_fmt(fmt, supported_formats):
-    """
-    Normalize and validate report output format.
+"""Shared helpers for structure report modules.
 
-    Parameters
-    ----------
-    fmt : str
-        Raw format input from caller.
-    supported_formats : tuple[str, ...]
-        Supported canonical format names.
-    """
+``_normalize_fmt`` lives here (instead of in a report package) so that
+report modules in any package -- including the lower-level
+``selection`` package -- can reuse it without inverting the package
+dependency direction.
+"""
 
-    if not isinstance(fmt, str):
-        raise TypeError(f"Format must be str, got {type(fmt).__name__}.")
-
-    normalized_fmt = fmt.strip().lower()
-    fmt_alias = {
-        "txt": "text",
-        "lst": "list",
-        "table": "pandas",
-    }
-    normalized_fmt = fmt_alias.get(normalized_fmt, normalized_fmt)
-
-    if normalized_fmt not in supported_formats:
-        supported = ", ".join(supported_formats)
-        raise ValueError(f"Format {fmt} not supported. Supported formats: {supported}")
-
-    return normalized_fmt
+from biorazer.structure.util.report import _normalize_fmt

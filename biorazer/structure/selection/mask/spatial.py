@@ -8,37 +8,7 @@ array, like the mask transforms in :mod:`biorazer.structure.selector.mask`.
 import numpy as np
 from scipy.spatial import KDTree
 
-
-def within_distance(atom_array_query, atom_array_center, distance):
-    """
-    Mask the atoms of ``atom_array_query`` that lie within ``distance``
-    of any atom of ``atom_array_center``.
-
-    Parameters
-    ----------
-    atom_array_query : biotite.structure.AtomArray
-        The atom array the returned mask is aligned with.
-    atom_array_center : biotite.structure.AtomArray
-        The atom array whose atoms act as the distance centers.
-    distance : float
-        Distance cutoff in Å.
-
-    Returns
-    -------
-    numpy.ndarray
-        Boolean mask on ``atom_array_query``, ``True`` for atoms within
-        ``distance`` of at least one atom of ``atom_array_center``.
-    """
-    kdtree_center = KDTree(atom_array_center.coord)
-    kdtree_query = KDTree(atom_array_query.coord)
-    neighbors = kdtree_center.query_ball_tree(kdtree_query, distance)
-    indices = sorted({i for neighbor_indices in neighbors for i in neighbor_indices})
-    mask = np.zeros(atom_array_query.shape, dtype=bool)
-    mask[indices] = True
-    return mask
-
-
-def interface(atom_array, selection1, selection2, distance_cutoff=3.5):
+def distance(atom_array, selection1, selection2, distance_cutoff=3.5):
     """
     Mask the atoms of two selections that form a contact interface.
 
