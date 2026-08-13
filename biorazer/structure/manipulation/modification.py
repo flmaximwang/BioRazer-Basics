@@ -1,8 +1,10 @@
+import re
 import numpy as np
 import biotite.structure as bio_struct
 import hydride
 
-from ..selection.index import group_atoms_by_residue
+from biorazer.database.amino_acid import AMINO_ACIDS_1TO3_UPPER
+from ..selection.index.annotation import group_atoms_by_residue
 from .util import (
     _ensure_common_annotations,
     _selected_residues,
@@ -221,4 +223,139 @@ def replace_side_chains(
     # A grafted bond graph would be incomplete (e.g. missing CA-CB and
     # inter-residue bonds); drop it and let add_hydrogens() rebuild it.
     out.bonds = None
+    return out
+
+_MUTATION_SPEC_PATTERN = re.compile(r"^([A-Za-z])(\d+)([A-Za-z])$")
+
+
+def mutate_without_side_chains(
+    atom_array: bio_struct.AtomArray,
+    mutation_spec: list[str],
+) -> bio_struct.AtomArray:
+    """
+    Convert residues to backbone-only scaffolds of a target residue type.
+
+    Each entry of ``mutation_spec`` names a residue and its target type in
+    the form ``<source letter><res_id><target letter>``, e.g. ``"M1N"``
+    (residue 1, currently MET, becomes ASN) or ``"N56E"``. For every named
+    residue, all side-chain atoms are removed -- only the backbone atoms
+    N/CA/C/O are kept -- and those backbone atoms are renamed to the target
+    residue's standard PDB name (upper-case three-letter code, e.g. ASN).
+    The result is a backbone-only scaffold (like the output of
+    :func:`remove_side_chains`, but retaining the target residue name
+    instead of GLY), ready for side-chain grafting via
+    :func:`replace_side_chains`.
+
+    Residues are matched by ``res_id`` only (the spec has no chain field),
+    so a ``res_id`` shared by several chains selects all of them. The
+    source letter is validated against the current ``res_name`` of each
+    matched residue; a mismatch raises ``ValueError``, catching spec typos
+    and multi-chain numbering collisions.
+
+    Parameters
+    ----------
+    atom_array
+        Input atom array.
+    mutation_spec
+        Non-empty list of mutation entries, each formatted like ``"M1N"``:
+        one-letter code of the current residue, residue id, one-letter code
+        of the target residue. Letters are case-insensitive.
+
+    Returns
+    -------
+    biotite.structure.AtomArray
+        A new atom array where the named residues keep only their backbone
+        atoms (N/CA/C/O), renamed to the target residue type. All other
+        residues are unchanged.
+
+    Raises
+    ------
+    ValueError
+        If ``mutation_spec`` is empty or contains an entry that is not
+        formatted like ``"M1N"``, names an unknown residue letter, targets
+        the same ``res_id`` twice, references a ``res_id`` that does not
+        exist in ``atom_array``, does not match the current ``res_name`` of
+        a matched residue, or targets a residue without backbone atoms.
+    """
+    if not isinstance(mutation_spec, (list, tuple)):
+        raise TypeError("mutation_spec must be a list of strings")
+    if len(mutation_spec) == 0:
+        raise ValueError("mutation_spec must not be empty")
+
+    # res_id -> (source letter, target 3-letter code)
+    requested = {}
+    for entry in mutation_spec:
+        if not isinstance(entry, str):
+            raise TypeError(
+                f"mutation_spec entries must be strings, got "
+                f"{type(entry).__name__}"
+            )
+        match = _MUTATION_SPEC_PATTERN.fullmatch(entry)
+        if match is None:
+            raise ValueError(
+                f"invalid mutation spec {entry!r}: expected the form 'M1N' "
+                "(source residue letter, residue id, target residue letter)"
+            )
+        src_letter, res_id_str, tgt_letter = match.groups()
+        src_letter = src_letter.upper()
+        tgt_letter = tgt_letter.upper()
+        if src_letter not in AMINO_ACIDS_1TO3_UPPER:
+            raise ValueError(
+                f"unknown source residue letter {src_letter!r} in {entry!r}"
+            )
+        if tgt_letter not in AMINO_ACIDS_1TO3_UPPER:
+            raise ValueError(
+                f"unknown target residue letter {tgt_letter!r} in {entry!r}"
+            )
+        tgt_res_name = AMINO_ACIDS_1TO3_UPPER[tgt_letter]
+        res_id = int(res_id_str)
+        if res_id in requested:
+            raise ValueError(
+                f"residue {res_id} is targeted more than once in mutation_spec"
+            )
+        requested[res_id] = (src_letter, tgt_res_name)
+
+    groups = group_atoms_by_residue(atom_array)
+
+    # residue key (chain_id, res_id, ins_code) -> target 3-letter code
+    matched = {}
+    for res_id, (src_letter, tgt_res_name) in requested.items():
+        keys = [key for key in groups if key[1] == res_id]
+        if not keys:
+            raise ValueError(
+                f"mutation_spec references residue {res_id}, which does not "
+                "exist in atom_array"
+            )
+        expected_res_name = AMINO_ACIDS_1TO3_UPPER[src_letter]
+        for key in keys:
+            current_res_name = atom_array.res_name[groups[key][0]]
+            if current_res_name != expected_res_name:
+                raise ValueError(
+                    f"residue {key} is {current_res_name}, but mutation_spec "
+                    f"entry expects {src_letter} ({expected_res_name})"
+                )
+            matched[key] = tgt_res_name
+
+    backbone_mask = np.isin(atom_array.atom_name, ["N", "CA", "C", "O"])
+    target_mask = np.zeros(len(atom_array), dtype=bool)
+    for key in matched:
+        idxs = groups[key]
+        target_mask[idxs] = True
+        if not np.any(backbone_mask[idxs]):
+            raise ValueError(
+                f"residue {key} has no backbone atoms (N/CA/C/O); "
+                "cannot mutate it"
+            )
+
+    keep_mask = (~target_mask) | (target_mask & backbone_mask)
+    out = atom_array[keep_mask]
+
+    for key, tgt_res_name in matched.items():
+        res_mask = (
+            (out.chain_id == key[0])
+            & (out.res_id == key[1])
+            & (out.ins_code == key[2])
+        )
+        out.res_name[res_mask] = tgt_res_name
+
     return out
