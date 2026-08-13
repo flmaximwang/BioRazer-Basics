@@ -168,7 +168,8 @@ def _generate_coverage_plot(a3m_path: str, out_path: str) -> str:
 def _run_one_job(name: str, seq: str, out_dir: str,
                  pair_mode: str, use_env: bool, use_filter: bool,
                  host: str, ua: str, pair_strategy: str,
-                 local_rcsb_database: Optional[str]) -> SeqResult:
+                 local_rcsb_database: Optional[str],
+                 fetch_templates: bool = True) -> SeqResult:
     """提交一条序列 (记录) 并整理该任务的结果到 out_dir/<name>/。
 
     多链 complex (':' 分隔) 时把每条链拆成独立记录提交 (ColabFold
@@ -210,7 +211,7 @@ def _run_one_job(name: str, seq: str, out_dir: str,
 
         # ── 模板 (仅 msa ticket 附带 pdb70.m8) ────────
         _handle_templates(tmp, out_dir, Ms, [(name, seq)], host, ua,
-                          local_rcsb_database)
+                          local_rcsb_database, fetch_templates)
 
         # ── msa.sh ────────────────────────────────────
         msa_sh = os.path.join(tmp, "msa.sh")
@@ -260,6 +261,7 @@ def run_search(
     ua: str = DEFAULT_UA,
     pair_strategy: str = "greedy",
     local_rcsb_database: Optional[str] = None,
+    fetch_templates: bool = True,
 ) -> SearchResult:
     """
     调用 MMseqs2 API，返回结构化搜索结果。
@@ -291,6 +293,10 @@ def run_search(
     local_rcsb_database : str, optional
         本地 RCSB 镜像根目录 (divided PDB 布局，如 /mnt/data/public/RCSB)。
         给出时模板结构直接从本地读取，不从 RCSB 下载。
+    fetch_templates : bool
+        是否获取模板结构 (RCSB 下载或本地镜像读取)，默认 True。
+        False 时只保留服务器返回的 pdb70.m8 (原样 + 按链拆分),
+        不下载/不读取模板 CIF, 不产出 templates/ 目录。
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -302,5 +308,6 @@ def run_search(
             pair_mode=pair_mode, use_env=use_env, use_filter=use_filter,
             host=host, ua=ua, pair_strategy=pair_strategy,
             local_rcsb_database=local_rcsb_database,
+            fetch_templates=fetch_templates,
         )
     return SearchResult(per_seq=per_seq_result, merged="", templates=None)

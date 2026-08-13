@@ -71,6 +71,7 @@ run_search(
     ua: str = "colabfold_msa/2.0 ...",
     pair_strategy: str = "greedy",
     local_rcsb_database: str | None = None,
+    fetch_templates: bool = True,
 ) -> SearchResult
 ```
 
@@ -87,6 +88,7 @@ run_search(
 | `ua` | `str` | ... | User-Agent 标识 |
 | `pair_strategy` | `str` | `"greedy"` | 配对策略: `"greedy"` (快) / `"complete"` (全) |
 | `local_rcsb_database` | `str \| None` | `None` | 本地 RCSB 镜像根目录（divided PDB 布局，如 `/mnt/data/public/RCSB`）。给出时模板结构直接从本地读取，不从 RCSB 下载 |
+| `fetch_templates` | `bool` | `True` | 是否获取模板结构（RCSB 下载或本地镜像读取）。`False` 时只保留服务器返回的 `pdb70.m8`（原样 + 按链拆分），不下载/不读取模板 CIF，不产出 `templates/` |
 
 **返回值**
 
@@ -227,3 +229,4 @@ biorazer/sequence/analysis/alignment/
 6. **Sequence logo**：使用 biotite 的 `SequenceProfile` + `plot_sequence_logo` 自动生成
 7. **配对策略**：`greedy` 快但可能不是最优配对，`complete` 慢但完整
 8. **本地 RCSB 镜像**：`--local-rcsb-database DIR`（或 `run_search(local_rcsb_database=...)`）可跳过模板网络下载——从 divided PDB 镜像（`DIR/{id[1:3]}/pdb{id}.ent.gz`）直接读取，经 biotite 转 CIF 后按链拆分，输出与下载模式完全一致
+9. **不下载模板**：`--no-fetch-templates`（或 `run_search(fetch_templates=False)`）跳过模板结构获取——只保留服务器返回的 `pdb70.m8` / `pdb70_N.m8`，不下载模板 CIF，不产出 `templates/` 目录。默认 `--fetch-templates`（True）

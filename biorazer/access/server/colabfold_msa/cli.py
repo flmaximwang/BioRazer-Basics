@@ -34,6 +34,10 @@ def _add_colabfold_parser(sub) -> argparse.ArgumentParser:
     p.add_argument("--local-rcsb-database", default=None, metavar="DIR",
                     help="本地 RCSB 镜像根目录 (divided PDB 布局，如 /mnt/data/public/RCSB)。"
                          "给出时模板结构直接从本地读取，不从 RCSB 下载 (默认 %(default)s)")
+    p.add_argument("--fetch-templates", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="是否获取模板结构 (RCSB 下载或本地镜像读取, 默认 %(default)s)。"
+                         "如不需要模板可加 --no-fetch-templates: 仅保留 pdb70.m8, 不下载模板")
     p.add_argument("--host", default=DEFAULT_HOST, help="API 服务器地址 (默认 %(default)s)")
     p.add_argument("--debug", action="store_true", help="打印调试信息")
     p.set_defaults(func=_run_colabfold)
@@ -68,6 +72,7 @@ def _run_colabfold(args) -> None:
         host=args.host,
         pair_strategy=args.pair_strategy,
         local_rcsb_database=args.local_rcsb_database,
+        fetch_templates=args.fetch_templates,
     )
 
     print(f"\n[✓] 完成!", file=sys.stderr)

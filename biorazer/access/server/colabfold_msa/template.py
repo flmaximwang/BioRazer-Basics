@@ -397,11 +397,16 @@ def _download_and_split_templates(
 def _handle_templates(tmp_dir: str, out_dir: str, Ms: List[int],
                       named_seqs: List[Tuple[str, str]],
                       host: str, ua: str,
-                      local_rcsb_database: Optional[str]) -> None:
+                      local_rcsb_database: Optional[str],
+                      fetch_templates: bool = True) -> None:
     """解析 tar 内 pdb70.m8 → 各序列目录 pdb70.m8 + 模板结构。
 
     注意: 仅 unpaired 的 msa ticket 附带 pdb70.m8; pair ticket 不做
     模板搜索 (与 colabfold 一致: use_pairing 时 use_templates=False)。
+
+    pdb70.m8 是服务器返回的一部分 (原样保留/按链拆分), 不涉及额外下载;
+    模板结构 (CIF) 才需要获取。fetch_templates=False 时仍然分发
+    pdb70.m8, 但跳过模板结构获取 (RCSB 下载 / 本地镜像读取)。
     """
     m8_path = os.path.join(tmp_dir, "pdb70.m8")
     if not os.path.isfile(m8_path):
@@ -425,6 +430,9 @@ def _handle_templates(tmp_dir: str, out_dir: str, Ms: List[int],
                 chain_m8_lines.setdefault(M, []).append(line)
     print(f"  [→] 模板搜索: {sum(len(v) for v in chain_templates.values())} 个 hit",
           file=sys.stderr)
+    if not fetch_templates:
+        print("  [–] fetch_templates=False: 跳过模板结构获取 (仅保留 pdb70.m8)",
+              file=sys.stderr)
     # 服务器返回的原始 pdb70.m8 原样保留, 同时按链拆分出 pdb70_N.m8
     # (多链 → pdb70_0.m8, pdb70_1.m8, ...; 单链 → 仅原始 pdb70.m8)
     for name, _ in named_seqs:
@@ -441,5 +449,7 @@ def _handle_templates(tmp_dir: str, out_dir: str, Ms: List[int],
                 with open(m8_out, "w") as f:
                     for raw_line in lines_out:
                         f.write(raw_line + "\n")
-    _download_and_split_templates(chain_templates, Ms, named_seqs, out_dir, host, ua,
-                                  local_rcsb_database=local_rcsb_database)
+    if fetch_templates:
+        _download_and_split_templates(chain_templates, Ms, named_seqs, out_dir,
+                                      host, ua,
+                                      local_rcsb_database=local_rcsb_database)
