@@ -18,7 +18,7 @@ from .annotation import extend_by_res
 
 def report_mask_by_res(
     atom_array: AtomArray,
-    mask: np.ndarray,
+    selection: np.ndarray,
     fmt="pymol",
     pymol_model_name="",
     pymol_selection_prefix=None,
@@ -56,7 +56,7 @@ def report_mask_by_res(
     """
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    mask_by_res = extend_by_res(atom_array=atom_array, mask=mask)
+    mask_by_res = extend_by_res(atom_array=atom_array, mask=selection)
 
     residues = []
     for atom in atom_array[selection]:
