@@ -2,13 +2,13 @@ import numpy as np
 from scipy.spatial import KDTree
 from biotite import structure as bio_struct
 from biorazer.display import print_with_decoration, print_decoration_line
+from biorazer.structure.selection.mask.report import report_mask_by_res
 from biorazer.structure.util.selection import _normalize_selection
 from biorazer.structure.util.report import (
     _format_atom_label,
-    _normalize_interface_residues,
     _to_pymol_atom_selector,
 )
-from ....selection.mask.spatial import distance
+from ....selection.mask.spatial import close_atoms
 from .util import _normalize_fmt
 
 
@@ -38,7 +38,7 @@ def report_interface_residues(
     """
     fmt = _normalize_fmt(fmt, ("pymol", "text", "list"))
 
-    interface_atom_mask_1, interface_atom_mask_2 = distance(
+    interface_atom_mask_1, interface_atom_mask_2 = close_atoms(
         atom_array,
         selection1=selection1,
         selection2=selection2,
@@ -46,7 +46,7 @@ def report_interface_residues(
     )
     interface_atom_mask = interface_atom_mask_1 | interface_atom_mask_2
 
-    interface_residues = _normalize_interface_residues(atom_array, interface_atom_mask)
+    interface_residues = report_mask_by_res(atom_array, interface_atom_mask, fmt="list")
 
     if fmt == "list":
         return interface_residues

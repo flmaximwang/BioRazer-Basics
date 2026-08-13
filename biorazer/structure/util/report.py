@@ -1,5 +1,3 @@
-import numpy as np
-from biotite import structure as bio_struct
 
 
 def _normalize_fmt(fmt, supported_formats):
@@ -30,17 +28,6 @@ def _normalize_fmt(fmt, supported_formats):
         raise ValueError(f"Format {fmt} not supported. Supported formats: {supported}")
 
     return normalized_fmt
-
-
-def _normalize_interface_residues(
-    atom_array: bio_struct.AtomArray, interface_atom_mask: np.ndarray
-):
-    interface_residues = []
-    for atom in atom_array[interface_atom_mask]:
-        identifier = (str(atom.chain_id), int(atom.res_id))
-        if identifier not in interface_residues:
-            interface_residues.append(identifier)
-    return interface_residues
 
 
 def _format_atom_label(atom):

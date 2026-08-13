@@ -6,12 +6,12 @@ residue-level report, following the same ``fmt`` conventions
 (``pymol`` / ``text`` / ``list``) as the static analysis report
 modules.
 """
+from biotite import structure as bio_struct
 import numpy as np
 from biotite.structure import AtomArray
 from biorazer.display import print_with_decoration, print_decoration_line
 from biorazer.structure.util.report import (
     _normalize_fmt,
-    _normalize_interface_residues,
 )
 from .annotation import extend_by_res
 
@@ -58,7 +58,11 @@ def report_mask_by_res(
 
     mask_by_res = extend_by_res(atom_array=atom_array, mask=mask)
 
-    residues = _normalize_interface_residues(atom_array, mask_by_res)
+    residues = []
+    for atom in atom_array[selection]:
+        identifier = (str(atom.chain_id), int(atom.res_id))
+        if identifier not in residues:
+            residues.append(identifier)
 
     if fmt == "list":
         return residues

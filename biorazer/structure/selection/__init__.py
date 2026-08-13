@@ -41,4 +41,4 @@ from .index.annotation import (
     mask_from_indices,
 )
 from .mask import annotation, spatial
-from .mask.spatial import distance
+from .mask.spatial import close_atoms

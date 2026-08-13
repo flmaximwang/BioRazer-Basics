@@ -8,7 +8,7 @@ array, like the mask transforms in :mod:`biorazer.structure.selector.mask`.
 import numpy as np
 from scipy.spatial import KDTree
 
-def distance(atom_array, selection1, selection2, distance_cutoff=3.5):
+def close_atoms(atom_array, selection1, selection2, distance_cutoff=3.5):
     """
     Mask the atoms of two selections that form a contact interface.
 

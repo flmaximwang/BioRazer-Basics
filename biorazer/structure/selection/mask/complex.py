@@ -2,7 +2,7 @@ import numpy as np
 import biotite.structure as bio_struct
 import hydride
 from ...selection.mask.annotation import extend_by_res as _by_res_id, revert_mask as _revert_mask
-from ...selection.mask.spatial import distance
+from ...selection.mask.spatial import close_atoms
 from . import check
 
 
@@ -86,7 +86,7 @@ def buried_unsat_hbond_atoms(
         atom_array, _ = hydride.add_hydrogen(atom_array)
         atom_array.coord = hydride.relax_hydrogen(atom_array)
 
-    interface_mask_1, interface_mask_2 = distance(
+    interface_mask_1, interface_mask_2 = close_atoms(
         atom_array, selection1, selection2, **interface_kwargs
     )
     interface_mask = interface_mask_1 | interface_mask_2
