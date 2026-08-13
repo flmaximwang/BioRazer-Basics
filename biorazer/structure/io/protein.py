@@ -4,6 +4,7 @@ from biotite.structure.io import pdb, pdbx
 from biotite.structure import AtomArray
 import biotite.structure as bio_struc
 import biotite.sequence as bio_seq
+from biorazer.database.amino_acid import AMINO_ACIDS_3TO1_UPPER
 from biotite.structure.io.pdb.hybrid36 import encode_hybrid36
 from biorazer.io import Converter
 from biorazer.sequence.io import StrDict_Fasta
@@ -162,7 +163,7 @@ class Pdb_StrDict(Converter):
     Converts a PDB file to a sequence dictionary.
     """
 
-    def read(self, **kwargs) -> dict:
+    def read(self, remove_gaps=False, **kwargs) -> dict:
         structure = Pdb_AtomArray(self.input_io, self.output_io).read(**kwargs)
         chain_ids = bio_struc.get_chains(structure)
         res = {}
@@ -177,21 +178,20 @@ class Pdb_StrDict(Converter):
                     idx = res_ids.index(i)
                 except ValueError:
                     # Missing residue
-                    one_char_res_names.append("X")
+                    one_char_res_names.append("-") # - means gaps
                     continue
                 res_name = res_names[idx]
                 if len(res_name) != 3:
                     # Nucleotides
                     break
                 try:
-                    one_char_res_names.append(
-                        bio_seq.ProteinSequence.convert_letter_3to1(res_name)
-                    )
+                    one_char_res_names.append(AMINO_ACIDS_3TO1_UPPER[res_name])
                 except KeyError:
                     # Non-standard amino acid or ligand
-                    one_char_res_names.append("X")
+                    one_char_res_names.append("X") # X means unrecognized residues
 
             sequence = "".join(one_char_res_names)
-            res[chain_id] = sequence
+            if remove_gaps:
+                res[chain_id] = sequence.replace("-", "")
 
         return res
