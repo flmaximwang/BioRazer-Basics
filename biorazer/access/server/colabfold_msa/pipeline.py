@@ -10,25 +10,31 @@
   result = run_search([("complex", "SEQ1...:SEQ2...")], "msa_out/",
                        pair_mode="paired")
   # 提交时每条链拆成独立记录 (>101, >102, ...), 服务器端配对,
-  # 结果合并为整复合物的一份 a3m: msa_out/complex/pair.a3m
+  # 结果合并为整复合物的一份 a3m: msa_out/complex/paired/paired.a3m
 
 多条记录 = 多个独立任务 (各自提交, 互不配对):
   result = run_search([("prot_A", "SEQ1..."), ("prot_B", "SEQ2...")], "msa_out/")
   # 输出 msa_out/prot_A/, msa_out/prot_B/
 
-输出:
+输出 (按模式分目录, 模式未请求/无结果时该目录仍建, 仅含 query 序列;
+a3m 均为每链拆分文件, 不产合并形态):
   msa_out/
-    ├── chain_A/
-    │   ├── uniref.a3m       (unpaired 时)
-    │   ├── bfd.*.a3m        (环境数据库，启用时)
-    │   ├── merged.a3m       (该链所有数据库合并)
-    │   ├── logo.png         (sequence logo)
-    │   ├── coverage.png     (coverage 热图)
-    │   ├── pdb70.m8         (该链模板搜索结果)
-    │   └── templates/       (该链的模板 CIF, 已按链拆分)
-    ├── chain_B/
-    │   └── ...
-    └── .template_cache/     (临时缓存，自动删除)
+    ├── seq_name/
+    │   ├── unpaired/            (unpaired 模式结果)
+    │   │   ├── uniref.a3m       (服务器原始返回, 原样保留)
+    │   │   ├── bfd.*.a3m        (环境数据库原始返回, 启用时)
+    │   │   ├── unpaired_0.a3m, unpaired_1.a3m, ...  (每链拆分; 单链时即 unpaired.a3m)
+    │   │   ├── logo_0.png / coverage_0.png, ...     (每链各一张; 单链时 logo.png)
+    │   │   ├── pdb70.m8         (服务器原始返回, 原样保留)
+    │   │   ├── pdb70_0.m8, pdb70_1.m8, ...  (模板 hit 按链拆分; 单链时无)
+    │   │   └── templates/       (模板 CIF, 按链命名 {pdb}_{chain}.cif)
+    │   ├── paired/              (paired 模式结果)
+    │   │   ├── paired.a3m       (整复合物配对 MSA, 各链段逐行拼接)
+    │   │   ├── paired_0.a3m, paired_1.a3m, ...  (每链原始段; 单链时不拆分)
+    │   │   ├── logo.png / coverage.png   (整复合物, 便于对比各链 MSA 差异)
+    │   │   ├── logo_0.png / coverage_0.png, ...  (每链各一张; 单链时无 _N)
+    │   └── msa.sh
+    └── .template_cache/         (临时缓存, 自动删除)
 """
 
 import os
@@ -175,18 +181,31 @@ def _run_one_job(name: str, seq: str, out_dir: str,
     try:
         a3m_files: List[str] = []
         Ms: List[int] = []
+        paired_had_hits = False
+        unpaired_had_hits = False
 
         # ── paired 部分 ──────────────────────────────
         if pair_mode in ("paired", "paired+unpaired"):
-            files, Ms = run_paired(chains, tmp, job_dir, use_env, pair_strategy,
-                                   host, ua)
+            files, Ms, paired_had_hits = run_paired(
+                chains, tmp, job_dir, use_env, pair_strategy, host, ua)
+            a3m_files.extend(files)
+        else:
+            # 模式未请求: 仍建 paired/ 子目录, 仅写 query 序列
+            files, _Ms, _ = run_paired(chains, tmp, job_dir, use_env,
+                                       pair_strategy, host, ua, active=False)
             a3m_files.extend(files)
 
         # ── unpaired 部分 ────────────────────────────
         if pair_mode in ("unpaired", "paired+unpaired"):
             tar_name = "out_unpaired.tar.gz" if pair_mode == "paired+unpaired" else "out.tar.gz"
-            files, Ms = run_unpaired(chains, tmp, job_dir, use_env, use_filter,
-                                     host, ua, tar_name=tar_name)
+            files, Ms, unpaired_had_hits = run_unpaired(
+                chains, tmp, job_dir, use_env, use_filter, host, ua,
+                tar_name=tar_name)
+            a3m_files.extend(files)
+        else:
+            # 模式未请求: 仍建 unpaired/ 子目录, 仅写 query 序列
+            files, _Ms, _ = run_unpaired(chains, tmp, job_dir, use_env,
+                                         use_filter, host, ua, active=False)
             a3m_files.extend(files)
 
         # ── 模板 (仅 msa ticket 附带 pdb70.m8) ────────
@@ -198,26 +217,33 @@ def _run_one_job(name: str, seq: str, out_dir: str,
         if os.path.isfile(msa_sh):
             shutil.copy2(msa_sh, os.path.join(job_dir, "msa.sh"))
 
-        # ── merged.a3m + logo + coverage ─────────────
+        # ── logo + coverage (拆分后的每链文件 + 整复合物 paired.a3m) ──
         result = SeqResult(files=list(a3m_files), plots=[], report="")
-        if a3m_files:
-            merged_per_seq = os.path.join(job_dir, "merged.a3m")
-            parts = []
-            for f in a3m_files:
-                with open(f) as fh:
-                    parts.append(fh.read().rstrip() + "\n")
-            with open(merged_per_seq, "w") as f:
-                f.write("".join(parts))
-            result.files.append(merged_per_seq)
-
-            logo_path = os.path.join(job_dir, "logo.png")
-            _generate_logo(merged_per_seq, logo_path)
-            if os.path.isfile(logo_path):
+        for f in a3m_files:
+            mode_dir = os.path.dirname(f)
+            base = os.path.basename(f)
+            # 出图对象: 每链拆分文件 (unpaired_N/paired_N, 单链无后缀)
+            # + 整复合物 paired.a3m (便于对比各链 MSA 差异)
+            if not (base.startswith("unpaired_") or base.startswith("paired_")
+                    or base == "unpaired.a3m" or base == "paired.a3m"):
+                continue
+            # 无真实命中 (仅 query 序列) 不出图
+            if base.startswith("unpaired_") or base == "unpaired.a3m":
+                if not unpaired_had_hits:
+                    continue
+            else:
+                if not paired_had_hits:
+                    continue
+            logo_path = os.path.join(mode_dir, "logo.png")
+            cov_path = os.path.join(mode_dir, "coverage.png")
+            # 每链拆分文件: 图名带链序号, 如 logo_0.png
+            if base.startswith("unpaired_") or base.startswith("paired_"):
+                idx = base.rsplit("_", 1)[1].split(".")[0]
+                logo_path = os.path.join(mode_dir, f"logo_{idx}.png")
+                cov_path = os.path.join(mode_dir, f"coverage_{idx}.png")
+            if _generate_logo(f, logo_path):
                 result.plots.append(logo_path)
-
-            cov_path = os.path.join(job_dir, "coverage.png")
-            _generate_coverage_plot(merged_per_seq, cov_path)
-            if os.path.isfile(cov_path):
+            if _generate_coverage_plot(f, cov_path):
                 result.plots.append(cov_path)
         return result
     finally:

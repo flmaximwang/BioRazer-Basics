@@ -17,8 +17,8 @@ result = run_search(
     [("my_protein", "MTSENLYFQGAMGSMTSENLYFQGAMG")],
     "msa_out/",
 )
-# result.per_seq["my_protein"].files   -> ['msa_out/my_protein/uniref.a3m', ...]
-# result.per_seq["my_protein"].plots   -> ['msa_out/my_protein/logo.png']
+# result.per_seq["my_protein"].files   -> ['msa_out/my_protein/unpaired/uniref.a3m', ...]
+# result.per_seq["my_protein"].plots   -> ['msa_out/my_protein/unpaired/logo.png']
 ```
 
 ### 多链配对 MSA（用于 AF3 / OpenDDE 多聚体）
@@ -33,7 +33,8 @@ result = run_search(
     "ab_msa/",
     pair_mode="paired",
 )
-# 输出: ab_msa/complex/pair.a3m  (整复合物配对 MSA, 每行 = 各链拼接)
+# 输出: ab_msa/complex/paired/pair.a3m  (整复合物配对 MSA, 每行 = 各链拼接)
+#       ab_msa/complex/paired/pair_0.a3m, pair_1.a3m ... (每链原始段)
 ```
 
 注意: 多条记录 = 多个独立任务 (各自提交, 互不配对)。同一复合物的多链
@@ -93,13 +94,14 @@ run_search(
 SearchResult(
     per_seq = {
         "my_protein": SeqResult(
-            files=["msa_out/my_protein/uniref.a3m", "msa_out/my_protein/merged.a3m"],
-            plots=["msa_out/my_protein/logo.png"],
+            files=["msa_out/my_protein/unpaired/uniref.a3m",
+                   "msa_out/my_protein/unpaired/unpaired.a3m"],
+            plots=["msa_out/my_protein/unpaired/logo.png"],
             report=""
         ),
     },
-    merged="msa_out/merged.a3m",       # 所有链×数据库合并
-    templates={101: ["1abc", ...]},     # PDB 模板映射
+    merged="",                          # 预留: 顶层合并 (当前不产出)
+    templates=None,                     # PDB 模板映射
 )
 ```
 
@@ -137,46 +139,44 @@ merge_a3m(file_list: List[str]) -> str
 
 ## 输出目录结构
 
-### 单链
+结果按模式分目录; 模式未请求或服务器无结果时, 该模式目录仍会创建,
+但只包含 query 序列 (保证下游路径恒定)。处理顺序: **先对服务器返回的
+原始文件 (pdb70/uniref/bfd) 按链段拆分, 再逐链合并** — 不产合并形态的
+整复合物 a3m。
 
 ```
 msa_out/
 ├── my_protein/
-│   ├── uniref.a3m                    # UniRef30 搜索结果
-│   ├── bfd.mgnify30.metaeuk30.smag30.a3m  # 环境数据库 (use_env=True)
-│   ├── merged.a3m                    # 该链所有数据库合并
-│   ├── logo.png                      # sequence logo (50 AA/行, 10 AA/刻度)
-│   ├── coverage.png                  # coverage 热图
-│   ├── pdb70.m8                      # 该链的模板搜索结果
-│   └── templates/                    # 该链的模板 PDB 文件
-├── merged.a3m                        # 所有链×所有数据库合并
-└── pdb70.m8                          # 模板搜索结果（如有）
+│   ├── unpaired/                          # unpaired 模式结果
+│   │   ├── uniref.a3m                     # 服务器原始返回 (原样保留)
+│   │   ├── bfd.mgnify30.metaeuk30.smag30.a3m  # 环境数据库原始返回 (use_env=True)
+│   │   ├── unpaired_0.a3m, unpaired_1.a3m, ...  # 每链拆分 (各库段拼接, 不 padding; 单链时即 unpaired.a3m)
+│   │   ├── logo_0.png / coverage_0.png, ...      # 每链各一张 (单链时 logo.png / coverage.png)
+│   │   ├── pdb70.m8                     # 服务器原始返回 (原样保留)
+│   │   ├── pdb70_0.m8, pdb70_1.m8, ...          # 模板 hit 按链拆分 (单链时无)
+│   │   └── templates/                     # 模板 CIF, 按链命名 {pdb}_{chain}.cif
+│   ├── paired/                            # paired 模式结果
+│   │   ├── paired.a3m                     # 整复合物配对 MSA (各链段逐行拼接, 真实配对结果)
+│   │   ├── paired_0.a3m, paired_1.a3m, ...      # 每链原始段 (单链时不拆分)
+│   │   ├── logo.png / coverage.png              # 整复合物 (对比各链 MSA 差异)
+│   │   ├── logo_0.png / coverage_0.png, ...      # 每链各一张 (单链时无 _N)
+│   │   └── ...
+│   └── msa.sh                             # 本次提交的配置脚本
+└── .template_cache/                       # 模板下载缓存 (自动删除)
 ```
 
-### 多链（unpaired）
-
-```
-msa_out/
-├── chain_A/
-│   ├── uniref.a3m
-│   ├── bfd.mgnify30.*.a3m
-│   ├── merged.a3m
-│   ├── logo.png
-│   ├── coverage.png
-│   ├── pdb70.m8
-│   └── templates/
-├── chain_B/
-│   ├── uniref.a3m
-│   ├── bfd.mgnify30.*.a3m
-│   ├── merged.a3m
-│   ├── logo.png
-│   ├── coverage.png
-│   ├── pdb70.m8
-│   └── templates/
-├── merged.a3m
-├── templates/                        # 模板文件
-└── pdb70.m8
-```
+说明:
+- 多链 complex (一条记录, `:` 分隔) 的各链结果都在**同一个** uniref.a3m /
+  pair.a3m 里 (服务器按段返回, 段头 `>101`, `>102`, ...), 因此只有一个
+  unpaired/ 和 paired/ 目录。本地按段头把原始文件拆成每链文件
+  `unpaired_N.a3m` / `paired_N.a3m` (N 为链序号, 从 0 开始)。
+- unpaired 的服务器原始文件 (uniref.a3m / bfd.*.a3m / pdb70.m8) 原样保留;
+  拆分文件 = 原始文件按段头切出 (unpaired_N.a3m = uniref + bfd 对应链段
+  拼接, 先拆分后合并; pdb70_N.m8 = pdb70.m8 对应链的 hit 行)。
+- logo/coverage 对拆分后的每链文件绘制; 整复合物 paired.a3m 也出图
+  (便于对比各链 MSA 差异)。
+- 模板只由 msa (unpaired) ticket 附带, 故 `pdb70.m8` / `pdb70_N.m8` 与
+  `templates/` 归 unpaired/; paired 模式不产出模板。
 
 ---
 

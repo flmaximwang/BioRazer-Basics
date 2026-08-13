@@ -4,7 +4,8 @@
 - 网络: 从 files.rcsb.org 下载 CIF, 按链拆分 (_download_and_split_templates);
 - 本地: 从 RCSB divided PDB 镜像读取 PDB → biotite 转 CIF, 按链拆分
   (_split_templates_from_local, 由 local_rcsb_database 触发)。
-两种模式输出格式一致 (CIF), 进入各序列目录的 templates/。
+两种模式输出格式一致 (CIF), 进入各序列 unpaired/ 子目录的 templates/。
+pdb70.m8 只由 msa (unpaired) ticket 附带, 故模板整体归 unpaired/。
 """
 
 import gzip
@@ -241,7 +242,7 @@ def _split_templates_from_local(
         M = Ms[i] if i < len(Ms) else -1
         if M not in chain_templates:
             continue
-        seq_dir = os.path.join(out_dir, name)
+        seq_dir = os.path.join(out_dir, name, "unpaired")
         tpl_dir = os.path.join(seq_dir, "templates")
         os.makedirs(tpl_dir, exist_ok=True)
         chain_count = 0
@@ -361,7 +362,7 @@ def _download_and_split_templates(
         M = Ms[i] if i < len(Ms) else -1
         if M not in chain_templates:
             continue
-        seq_dir = os.path.join(out_dir, name)
+        seq_dir = os.path.join(out_dir, name, "unpaired")
         tpl_dir = os.path.join(seq_dir, "templates")
         os.makedirs(tpl_dir, exist_ok=True)
         chain_count = 0
@@ -424,15 +425,21 @@ def _handle_templates(tmp_dir: str, out_dir: str, Ms: List[int],
                 chain_m8_lines.setdefault(M, []).append(line)
     print(f"  [→] 模板搜索: {sum(len(v) for v in chain_templates.values())} 个 hit",
           file=sys.stderr)
+    # 服务器返回的原始 pdb70.m8 原样保留, 同时按链拆分出 pdb70_N.m8
+    # (多链 → pdb70_0.m8, pdb70_1.m8, ...; 单链 → 仅原始 pdb70.m8)
     for name, _ in named_seqs:
-        seq_dir = os.path.join(out_dir, name)
-        m8_out = os.path.join(seq_dir, "pdb70.m8")
-        lines_out: List[str] = []
-        for M in Ms:
-            lines_out.extend(chain_m8_lines.get(M, []))
-        if lines_out:
-            with open(m8_out, "w") as f:
-                for raw_line in lines_out:
-                    f.write(raw_line + "\n")
+        seq_dir = os.path.join(out_dir, name, "unpaired")
+        os.makedirs(seq_dir, exist_ok=True)
+        if os.path.isfile(m8_path):
+            shutil.copy2(m8_path, os.path.join(seq_dir, "pdb70.m8"))
+        if len(Ms) > 1:
+            for i, M in enumerate(Ms):
+                lines_out = chain_m8_lines.get(M, [])
+                if not lines_out:
+                    continue
+                m8_out = os.path.join(seq_dir, f"pdb70_{i}.m8")
+                with open(m8_out, "w") as f:
+                    for raw_line in lines_out:
+                        f.write(raw_line + "\n")
     _download_and_split_templates(chain_templates, Ms, named_seqs, out_dir, host, ua,
                                   local_rcsb_database=local_rcsb_database)

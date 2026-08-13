@@ -8,7 +8,7 @@ import os
 import re
 import sys
 import tarfile
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 # ── FASTA / 验证 ─────────────────────────────────────
@@ -101,64 +101,3 @@ def _split_a3m_sections(lines: List[str]) -> List[List[str]]:
         if cur is not None:
             cur.append(l)
     return sections
-
-
-def _split_a3m_by_chain(a3m_path: str, Ms: List[int],
-                         output_dirs: List[str],
-                         db_label: str = "uniref") -> Dict[int, str]:
-    """将 a3m 文件按链 header 编号拆分成链独立文件。
-
-    Parameters
-    ----------
-    a3m_path : str      未拆分的 a3m 文件路径
-    Ms : List[int]      各链对应的 header 编号（如 [101, 102, 103]）
-    output_dirs : List[str]  每条序列对应的输出目录（与 Ms 等长）
-    db_label : str      数据库名称，用于文件命名
-
-    Returns
-    -------
-    {M: chain_a3m_path}  映射
-    """
-    if not os.path.isfile(a3m_path):
-        return {}
-
-    # 逐行读，按 M 分组
-    lines_by_M: Dict[int, List[str]] = {}
-    current_M: Optional[int] = None
-    with open(a3m_path) as f:
-        for line in f:
-            if not line.strip():
-                continue
-            if line.startswith(">"):
-                try:
-                    current_M = int(line[1:].rstrip().split()[0])
-                except ValueError:
-                    # 非数字 header（数据库匹配序列，如 >|uniref|xxx）— 保留在当前链
-                    if current_M is not None:
-                        lines_by_M.setdefault(current_M, []).append(line)
-                    continue
-                if current_M not in lines_by_M:
-                    lines_by_M[current_M] = []
-                lines_by_M[current_M].append(line)
-            elif current_M is not None:
-                # 跳过空字节
-                clean_line = line.replace("\x00", "")
-                lines_by_M[current_M].append(clean_line)
-
-    # 构建 M → output_dir 映射
-    m_to_dir: Dict[int, str] = {}
-    for idx, M in enumerate(Ms):
-        if idx < len(output_dirs):
-            m_to_dir[M] = output_dirs[idx]
-
-    # 写入链独立文件
-    written = {}
-    for M, chain_dir in m_to_dir.items():
-        if M not in lines_by_M:
-            continue
-        out_path = os.path.join(chain_dir, f"{db_label}.a3m")
-        with open(out_path, "w") as f:
-            f.writelines(lines_by_M[M])
-        written[M] = out_path
-
-    return written
