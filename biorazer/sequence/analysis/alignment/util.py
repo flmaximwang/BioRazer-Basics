@@ -1,5 +1,5 @@
+import numpy as np
 from biotite.sequence.align import Alignment
-
 
 class AlignmentHelper:
 

@@ -11,6 +11,7 @@ from biotite.sequence.align import Alignment
 from biotite.sequence.graphics import plot_sequence_logo
 from biotite.sequence.graphics.colorschemes import get_color_scheme
 from biotite.visualize import plot_scaled_text
+from matplotlib.transforms import ScaledTranslation
 
 from biorazer.sequence.io import Fasta_Profile
 
@@ -67,6 +68,24 @@ def _plot_sequence_logo_freq(ax, profile):
                 bottom += h
     ax.set_xlim(0.5, len(profile.symbols) + 0.5)
     ax.set_ylim(0, 1.0)
+
+
+def _column_entropies(profile):
+    """每列 Shannon 熵 (bits), 基于全字母表残基频率。
+
+    H_i = -sum_j f_ij * log2(f_ij), f_ij = 第 i 列符号 j 计数 / 第 i 列总计数,
+    与 info 模式堆高同源 (堆高 = log2(|alphabet|) - H_i)。全 0 空列记为 NaN
+    (不参与任何标注)。
+    """
+    counts = profile.symbols.astype(float)
+    totals = counts.sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        freq = counts / totals[:, None]
+        # 0*log2(0) 按惯例取 0; 空列 freq 为 NaN, 下面统一盖掉
+        safe = np.where(freq > 0, freq, 1.0)
+        ent = -(safe * np.log2(safe)).sum(axis=1)
+    ent[totals == 0] = np.nan
+    return ent
 
 
 def _resolve_renumber_res(renumber_res, chain_ids):
@@ -313,6 +332,8 @@ def plot_seqlogo(
     mark_res_ids: (
         int | list[int] | dict[int, int | list[int]] | None
     ) = None,
+    mark_conservative_res: bool = True,
+    entropy_cutoff: float = 0.0,
     title: str = "",
     figsize: tuple[float, float] | None = None,
     dpi: int | None = None,
@@ -387,6 +408,17 @@ def plot_seqlogo(
         is only allowed for a single chain; with multiple chains a
         dict ``{chain_id: int | list[int]}`` marks each chain with
         only its own ids (default: no marks).
+    mark_conservative_res : bool, optional
+        Mark positions whose column Shannon entropy is at most
+        ``entropy_cutoff`` with a red underline below their tick label
+        (residue number) (default: True).
+    entropy_cutoff : float, optional
+        Entropy threshold in bits; a position is underlined when its
+        column entropy is ``<= entropy_cutoff`` (default 0.0 = only
+        fully conserved columns). Entropy is computed from the column
+        symbol frequencies over the full alphabet — the same quantity
+        that determines stack height in ``'info'`` mode — so a
+        negative value is invalid.
     title : str, optional
         Figure title (default: no title).
     figsize : tuple of float, optional
@@ -409,6 +441,7 @@ def plot_seqlogo(
     ValueError
         If ``profiles`` is empty or contains an empty chain, ``mode``
         is not ``'info'`` or ``'freq'``, ``per_line`` is not positive,
+        ``entropy_cutoff`` is negative,
         ``renumber_res``/``res_id_range``/``first_tick_id``/
         ``mark_res_ids`` contain invalid values, a chain-id-less form
         (``res_id_range`` pair, ``first_tick_id`` int,
@@ -437,6 +470,10 @@ def plot_seqlogo(
         )
     if per_line <= 0:
         raise ValueError(f"per_line must be positive, got {per_line}")
+    if entropy_cutoff < 0:
+        raise ValueError(
+            f"entropy_cutoff must be non-negative, got {entropy_cutoff}"
+        )
 
     # 归一化输入: 统一的 (chain_id, profile) 有序列表
     if isinstance(profiles, Alignment):
@@ -571,6 +608,7 @@ def plot_seqlogo(
 
     for ci, (chain_id, profile) in enumerate(chain_items):
         res_ids, kept = res_ids_per_chain[ci]
+        entropies = _column_entropies(profile)
         rows_ci = rows_per_chain[ci]
         col_segs = sorted(
             (r, s, e, base) for (cc, r, s, e, base) in segments if cc == ci
@@ -631,6 +669,31 @@ def plot_seqlogo(
                             markersize=7,
                             zorder=5,
                             clip_on=False,
+                        )
+            # 保守位点 (熵 <= entropy_cutoff, 默认 0 = 完全保守):
+            # ticklabel (残基编号) 下方的红色下划线, 横跨整列字母宽度。
+            # 用 x 轴混合变换 (x 为数据坐标, y 为轴盒子相对位置) 叠加固定
+            # 英寸偏移: 线画在坐标轴盒子下方 ~0.24 in, 正好压在编号文字下方
+            # (编号底边距轴盒子约 14 pt), 不触碰字母区也不扩展 ylim。
+            if mark_conservative_res:
+                cons_ids = [
+                    i
+                    for i in range(n)
+                    if entropies[kept[s + i]] <= entropy_cutoff
+                ]
+                if cons_ids:
+                    under_trans = ax.get_xaxis_transform() + ScaledTranslation(
+                        0, -0.24, fig.dpi_scale_trans
+                    )
+                    for i in cons_ids:
+                        ax.plot(
+                            [local[i] + 0.5, local[i] + 1.5],
+                            [0.0, 0.0],
+                            color="#d62728",
+                            lw=1.2,
+                            zorder=5,
+                            clip_on=False,
+                            transform=under_trans,
                         )
             if not ftids_by_chain:
                 top_row, bot_row = 0, n_rows - 1
@@ -899,6 +962,15 @@ def _add_seqlogo_parser(sub):
     p.add_argument("--mark-res-ids", metavar="N[,N...]|C_N[,...]", default=None,
                    help="标记这些残基 (renumber_res 编号后): 纯整数列表"
                         " 只支持单链; 多链用 C_N 逐链 (如 0_109,0_131,1_164)")
+    p.add_argument("--mark-conservative-res",
+                   action=argparse.BooleanOptionalAction, default=True,
+                   help="在残基编号 (ticklabel) 下方用红色下划线标注保守位点"
+                        " (列熵 <= --entropy-cutoff): 默认开启,"
+                        " 传 --no-mark-conservative-res 关闭")
+    p.add_argument("--entropy-cutoff", type=float, default=0.0,
+                   metavar="FLOAT",
+                   help="熵阈值 (bits): 列熵 <= 该值的位点被下划线标注"
+                        " (默认 0 = 仅完全保守位点)")
     p.set_defaults(func=_run_seqlogo)
     return p
 
@@ -939,8 +1011,10 @@ def _run_seqlogo(args) -> None:
                 args.first_tick_id, "--first-tick-id", n_chains
             ),
             mark_res_ids=_parse_mark_res_ids(
-                args.mark_res_ids, "--mark-res-ids", len(profiles)
+                args.mark_res_ids, "--mark-res-ids", n_chains
             ),
+            mark_conservative_res=args.mark_conservative_res,
+            entropy_cutoff=args.entropy_cutoff,
             title=args.title,
             figsize=figsize,
             dpi=args.dpi,

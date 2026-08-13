@@ -149,6 +149,23 @@ class TestCliEndToEnd:
             ">s\nAAA:BBB\n",
         )
 
+    def test_plot_seqlogo_conservative_flags(self, tmp_path):
+        """--no-mark-conservative-res / --entropy-cutoff 经 CLI 全流程可出图。"""
+        self._run(
+            ["plot-seqlogo", "--no-mark-conservative-res",
+             "--entropy-cutoff", "0.5"],
+            tmp_path,
+            ">q\nACDEFGHIKL\n>s1\nACDEFGHIKL\n>s2\nACDEEGHIKL\n",
+        )
+
+    def test_plot_seqlogo_single_chain_plain_mark(self, tmp_path):
+        """单链 + 纯整数 --mark-res-ids 不再被误拒 (回归: n_chains 误用 len(profiles))。"""
+        self._run(
+            ["plot-seqlogo", "--mark-res-ids", "2"],
+            tmp_path,
+            ">s\nACDEFGHIKL\n>s1\nACDEFGHIKL\n>s2\nACDEEGHIKL\n",
+        )
+
     def test_plot_msa(self, tmp_path):
         self._run(
             ["plot-msa"],
@@ -463,7 +480,11 @@ class TestSeqlogoNumbering:
             mark_res_ids=[9, 12],
         )
         ax = axes[0, 0]
-        mark_x = sorted(l.get_xdata()[0] for l in ax.lines)
+        # 全 A profile 每个位点都保守 -> 每条 ticklabel 下都有下划线;
+        # 倒三角是单点线 (xdata 1 个点), 下划线是两点横线, 按线型区分
+        mark_x = sorted(
+            l.get_xdata()[0] for l in ax.lines if len(l.get_xdata()) == 1
+        )
         assert mark_x == [2.0, 5.0]  # 9-8+1=2, 12-8+1=5
 
     def test_mark_res_ids_per_chain(self):
@@ -473,10 +494,12 @@ class TestSeqlogoNumbering:
             renumber_res={0: 8, 1: 34},
             mark_res_ids={0: [9], 1: [35]},
         )
-        assert sorted(l.get_xdata()[0] for l in axes[0, 0].lines) == [2.0]
-        assert sorted(l.get_xdata()[0] for l in axes[0, 1].lines) == [2.0]
+        tri0 = [l for l in axes[0, 0].lines if len(l.get_xdata()) == 1]
+        tri1 = [l for l in axes[0, 1].lines if len(l.get_xdata()) == 1]
+        assert sorted(l.get_xdata()[0] for l in tri0) == [2.0]
+        assert sorted(l.get_xdata()[0] for l in tri1) == [2.0]
         # 链 0 的标记 9 不应出现在链 1
-        assert len(axes[0, 0].lines) == 1 and len(axes[0, 1].lines) == 1
+        assert len(tri0) == 1 and len(tri1) == 1
 
     def test_mark_res_ids_multi_chain_plain_rejected(self):
         """多链 + 纯整数列表 -> ValueError (必须 dict)。"""
@@ -696,6 +719,133 @@ class TestSeqlogoCliNumbering:
         assert args.mark_res_ids == "0_109,0_131"
         assert not hasattr(args, "first_res_id")
         assert not hasattr(args, "res_id_shift")
+
+    def test_mark_conservative_defaults_and_flags(self):
+        """--mark-conservative-res 默认开启; --no- 前缀关闭; --entropy-cutoff 默认 0。"""
+        args = self._parse(["plot-seqlogo", "-i", "x.fa"])
+        assert args.mark_conservative_res is True
+        assert args.entropy_cutoff == 0.0
+        args = self._parse(
+            [
+                "plot-seqlogo",
+                "-i",
+                "x.fa",
+                "--no-mark-conservative-res",
+                "--entropy-cutoff",
+                "0.5",
+            ]
+        )
+        assert args.mark_conservative_res is False
+        assert args.entropy_cutoff == 0.5
+        args = self._parse(
+            ["plot-seqlogo", "-i", "x.fa", "--mark-conservative-res"]
+        )
+        assert args.mark_conservative_res is True
+
+
+class TestMarkConservativeRes:
+    """mark_conservative_res / entropy_cutoff: 列熵 <= 阈值的位点, 其残基编号
+    (ticklabel) 下方画红色下划线。
+
+    下划线是横跨整列字母宽度的水平线 (xdata 两个点), 与 mark_res_ids 的
+    倒三角 (xdata 一个点) 用线型区分; 画在坐标轴盒子下方的标签区, 不扩展
+    ylim、不触碰字母区。
+    """
+
+    @staticmethod
+    def _profiles(fasta_text):
+        import io
+
+        from biorazer.sequence.io import Fasta_Profile
+
+        return Fasta_Profile(input_io=io.StringIO(fasta_text)).read()
+
+    @staticmethod
+    def _underlines(ax):
+        return [
+            tuple(l.get_xdata())
+            for l in ax.lines
+            if len(l.get_xdata()) == 2
+            and l.get_ydata()[0] == l.get_ydata()[1]
+        ]
+
+    @staticmethod
+    def _below_ticklabels(fig, ax, line):
+        """该下划线的显示坐标 y 低于第一个 ticklabel 的底边。"""
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        lab_bottom = ax.get_xticklabels()[0].get_window_extent(
+            renderer
+        ).y0
+        line_y = line.get_transform().transform(
+            (line.get_xdata()[0], 0.0)
+        )[1]
+        return line_y < lab_bottom
+
+    def test_default_marks_fully_conserved(self):
+        """默认 (cutoff=0): 仅熵=0 的完全保守列有下划线, 画在 ticklabel 下方。
+
+        列 0: A/A/A -> 熵 0; 列 1: C/C/A -> 熵 0.918。
+        """
+        fig, axes = plot_seqlogo(
+            self._profiles(">s\nAC\n>s1\nAC\n>s2\nAA\n")
+        )
+        ax = axes[0, 0]
+        underlines = self._underlines(ax)
+        assert underlines == [(0.5, 1.5)]
+        assert self._below_ticklabels(fig, ax, ax.lines[0])
+        assert ax.get_ylim()[0] == 0.0  # 字母区 ylim 不受影响
+
+    def test_entropy_cutoff_marks_more(self):
+        """cutoff=1.0: 两列熵都 <= 1.0, 都有下划线。"""
+        fig, axes = plot_seqlogo(
+            self._profiles(">s\nAC\n>s1\nAC\n>s2\nAA\n"),
+            entropy_cutoff=1.0,
+        )
+        assert self._underlines(axes[0, 0]) == [(0.5, 1.5), (1.5, 2.5)]
+
+    def test_disabled_no_underlines(self):
+        """mark_conservative_res=False: 无下划线。"""
+        fig, axes = plot_seqlogo(
+            self._profiles(">s\nAC\n>s1\nAC\n>s2\nAA\n"),
+            mark_conservative_res=False,
+        )
+        assert self._underlines(axes[0, 0]) == []
+
+    def test_multi_chain_per_chain(self):
+        """多链逐链: 链 0 四列全保守, 链 1 仅列 0 保守。"""
+        fig, axes = plot_seqlogo(
+            self._profiles(">s\nAAAA:AC\n>s1\nAAAA:AC\n>s2\nAAAA:AA\n")
+        )
+        assert self._underlines(axes[0, 0]) == [
+            (0.5, 1.5), (1.5, 2.5), (2.5, 3.5), (3.5, 4.5)
+        ]
+        assert self._underlines(axes[0, 1]) == [(0.5, 1.5)]
+
+    def test_freq_mode(self):
+        """freq 模式同样标注 (熵与 info 模式同源)。"""
+        fig, axes = plot_seqlogo(
+            self._profiles(">s\nAC\n>s1\nAC\n>s2\nAA\n"), mode="freq"
+        )
+        ax = axes[0, 0]
+        assert self._underlines(ax) == [(0.5, 1.5)]
+        assert self._below_ticklabels(fig, ax, ax.lines[0])
+
+    def test_negative_cutoff_rejected(self):
+        """负阈值 -> ValueError。"""
+        with pytest.raises(ValueError):
+            plot_seqlogo(
+                self._profiles(">s\nAAAA\n"), entropy_cutoff=-0.1
+            )
+
+    def test_underlines_survive_segmentation(self):
+        """长链分段: 每段各自标注自己的保守位点。"""
+        # 60 列全 A (全部熵 0) -> 两段各 50/10 条下划线
+        fasta = ">s\n" + "A" * 60 + "\n>s1\n" + "A" * 60 + "\n"
+        fig, axes = plot_seqlogo(self._profiles(fasta))
+        assert axes.shape == (2, 1)
+        assert len(self._underlines(axes[0, 0])) == 50
+        assert len(self._underlines(axes[1, 0])) == 10
 
 
 class TestEdgeCases:
