@@ -21,7 +21,7 @@ def report_mask_by_res(
     selection: np.ndarray,
     fmt="pymol",
     pymol_model_name="",
-    pymol_selection_prefix=None,
+    pymol_selection_name=None,
 ):
     """
     Report the residues covered by an atom mask in different formats.
@@ -67,7 +67,7 @@ def report_mask_by_res(
     if fmt == "list":
         return residues
     elif fmt == "pymol":
-        selection_name = f"{pymol_selection_prefix or pymol_model_name}_mask"
+        selection_name = f"{pymol_selection_name or pymol_model_name}"
         print_with_decoration("Copy the command below to PyMOL", decoration_char="#")
         print(f"select {selection_name}, not all")
         for chain_id, res_id in residues:
