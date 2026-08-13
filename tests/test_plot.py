@@ -238,12 +238,25 @@ class TestSeqlogoNumbering:
         )
         assert self._labels(axes) == ["1", "2", "3", "4", "5", "31", "32", "33"]
 
-    def test_renumber_res_anchor_before_first(self):
-        """第一个锚点之前按它逆推: {20: 31} -> 位置 0 编号 11。"""
+    def test_renumber_res_anchor_not_at_start(self):
+        """第一个锚点不在位置 0 时, 之前的残基不重编号 (保持 1 起):
+        {20: 31} 且链长 8 -> 全部在锚点前, 编号 1..8 (不再按锚点逆推)。"""
         fig, axes = plot_seqlogo(
             self._profiles(length=8), renumber_res={0: {20: 31}}
         )
-        assert self._labels(axes) == [str(v) for v in range(11, 19)]
+        assert self._labels(axes) == [str(v) for v in range(1, 9)]
+
+    def test_renumber_res_p_id_before_anchor_default(self):
+        """用户案例: P_ID 5_10 -> 位置 0-4 不重编号 (1..5), 位置 5 起 10.."""
+        fig, axes = plot_seqlogo(
+            self._profiles(length=6), renumber_res={0: {5: 10}}
+        )
+        assert self._labels(axes) == ["1", "2", "3", "4", "5", "10"]
+
+    def test_renumber_res_backward_at_anchor(self):
+        """锚点编号小于锚点前默认编号 (如 {5: 4} -> 1..5,4) 回退 -> ValueError。"""
+        with pytest.raises(ValueError):
+            plot_seqlogo(self._profiles(length=8), renumber_res={0: {5: 4}})
 
     def test_renumber_res_plain_int_rejected(self):
         """纯整数 / 列表形式已废除 -> ValueError。"""

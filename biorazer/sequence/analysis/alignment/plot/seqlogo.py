@@ -75,7 +75,8 @@ def _resolve_renumber_res(renumber_res, chain_ids):
     只接受 dict: {chain_id: int | {position: res_id}}。纯整数 / 列表形式
     已废除 (CLI 上单链用 P_ID, 多链用 C_P_ID, 均解析为 dict)。
     编号规则: 第 p 个残基 (0-based) 的编号 = 最近一个 <= p 的锚点 (pos, id)
-    的 id + (p - pos); 在第一个锚点之前则按第一个锚点逆推。同一链多个锚点
+    的 id + (p - pos); 第一个锚点 (P) 之前的残基不重编号, 保持默认从
+    1 起连续编号。同一链多个锚点
     可使编号跳变 (gap), 如 {0: {0: 1, 20: 31}} -> 编号 1..20, 31, 32, ...
     """
     if renumber_res is None:
@@ -265,23 +266,33 @@ def _resolve_res_id_range(res_id_range, chain_ids):
 def _res_ids_for_chain(anchors, length):
     """锚点表 -> 每位置编号列表 (0-based 位置, 长度 length)。
 
-    编号 = 最近一个 <= p 的锚点 id + (p - pos); 第一个锚点之前按它逆推。
-    锚点间的编号必须递增 (顺延), 回退视为非法输入。
+    编号 = 最近一个 <= p 的锚点 id + (p - pos); 第一个锚点 (P) 之前的
+    残基不重编号, 保持默认从 1 起连续编号 (p + 1)。锚点间及锚点衔接处
+    的编号必须递增 (顺延), 回退视为非法输入。
     """
     if not anchors:
         return list(range(1, length + 1))
     positions = sorted(anchors)
+    first = positions[0]
+    # 第一个锚点之前的残基保持默认编号 (1..first), 故锚点编号必须
+    # >= first + 1, 否则锚点处编号回退 (如 {5: 4} -> 1,2,3,4,5,4,5,...)
+    if anchors[first] < first + 1:
+        raise ValueError(
+            f"renumber_res 锚点编号必须沿位置递增: 锚点前默认编号到 "
+            f"{first}, 锚点 {first}->{anchors[first]} 回退"
+        )
     for a, b in zip(positions, positions[1:]):
         if anchors[b] < anchors[a] + (b - a):
             raise ValueError(
-                f"first_res_id 锚点编号必须沿位置递增: "
+                f"renumber_res 锚点编号必须沿位置递增: "
                 f"{a}->{anchors[a]} 到 {b}->{anchors[b]} 回退"
             )
     res_ids = []
     for p in range(length):
+        if p < first:
+            res_ids.append(p + 1)
+            continue
         i = bisect.bisect_right(positions, p) - 1
-        if i < 0:
-            i = 0
         ap = positions[i]
         res_ids.append(anchors[ap] + (p - ap))
     return res_ids
@@ -341,8 +352,10 @@ def plot_seqlogo(
         shorthand for ``{0: int}`` (the number of position 0). For an
         anchor table ``{position: res_id}``, position ``p`` gets the
         ``res_id`` of the nearest anchor at or before ``p`` plus the
-        offset ``p - anchor_position`` (positions before the first
-        anchor are extrapolated from it). Multiple anchors per chain
+        offset ``p - anchor_position``; residues before the first
+        anchor keep the default numbering starting at 1 (e.g.
+        ``{5: 10}`` numbers positions 0-4 as 1-5, position 5 as 10,
+        onwards 11, 12, ...). Multiple anchors per chain
         produce gapped numbering, e.g. ``{0: {0: 1, 20: 31}}``
         numbers positions 0-19 as 1-20, position 20 as 31, onwards
         32, 33, ... (default: every chain starts at 1).
@@ -866,9 +879,11 @@ def _add_seqlogo_parser(sub):
                         " 每列堆高恒为 1 (默认 info)")
     p.add_argument("--renumber-res", metavar="P_ID|C_P_ID[,...]", default=None,
                    help="残基重编号 (纯整数 N 形式已废除): P_ID 两段"
-                        " (如 0_8 = 位置 0 编号 8) 只支持单链;"
+                        " (如 5_10 = 位置 5 编号 10) 只支持单链;"
                         " C_P_ID 三段 (如 0_0_1,0_20_31,1_0_1) 逐链指定,"
-                        " 同一链多个锚点可产生 gap 编号 (默认从 1 起)")
+                        " 同一链多个锚点可产生 gap 编号; 第一个锚点之前"
+                        " 的残基不重编号, 保持 1 起连续编号"
+                        " (默认不指定 = 从 1 起)")
     p.add_argument("--res-id-range", metavar="S_E|C_S_E[,...]", default=None,
                    help="只画编号在 [起,止] (含首尾) 内的残基:"
                         " 两段 start_end (如 28_106) 只支持单链,"
