@@ -8,7 +8,7 @@ from biorazer.structure.util.report_utils import (
     _normalize_interface_residues,
     _to_pymol_atom_selector,
 )
-from ....selection.spatial import interface
+from ....selection.mask.spatial import interface
 from .util import _normalize_fmt
 
 

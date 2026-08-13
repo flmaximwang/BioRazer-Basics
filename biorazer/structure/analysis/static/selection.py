@@ -1,8 +1,8 @@
 import numpy as np
 import biotite.structure as bio_struct
 import hydride
-from ...selection.mask import by_res_id as _by_res_id, revert_mask as _revert_mask
-from ...selection.spatial import interface
+from ...selection.mask.annotation import extend_by_res as _by_res_id, revert_mask as _revert_mask
+from ...selection.mask.spatial import interface
 from . import check
 
 

@@ -16,20 +16,20 @@ either as boolean masks or as index arrays -- from an
 All mask-returning functions return masks aligned with the input atom
 array; index-returning functions return 1D ``int`` arrays.
 """
-from . import index, mask, spatial
+from .index import annotation
 
-from .mask import (
-    by_atom_name,
-    by_chain_id,
-    by_element,
-    by_res_id,
+from .mask.annotation import (
+    shrink_by_atom_name,
+    extend_by_chain,
+    shrink_by_element,
+    extend_by_res,
     by_res_name,
     intersect_masks,
     invert_mask,
     revert_mask,
     union_masks,
 )
-from .index import (
+from .index.annotation import (
     group_atoms_by_residue,
     indices_by_atom_name,
     indices_by_chain,
@@ -41,4 +41,5 @@ from .index import (
     indices_of_heavy_atoms,
     mask_from_indices,
 )
-from .spatial import interface, within_distance
+from .mask import annotation, spatial
+from .mask.spatial import interface, within_distance
