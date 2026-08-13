@@ -913,7 +913,9 @@ def _run_seqlogo(args) -> None:
         )
     except (OSError, ValueError) as e:
         sys.exit(f"error: 读取 {args.input} 失败: {e}")
-    if not profiles:
+    # 单链 FASTA (无 ':') read() 直接返回 SequenceProfile, 多链返回 dict
+    n_chains = 1 if isinstance(profiles, SequenceProfile) else len(profiles)
+    if n_chains == 0:
         sys.exit("error: 没有可用的序列/链 (检查 --ignore-seqs / --chains)")
 
     figsize = None
@@ -928,13 +930,13 @@ def _run_seqlogo(args) -> None:
             mode=args.mode,
             per_line=args.per_line,
             renumber_res=_parse_renumber_res(
-                args.renumber_res, "--renumber-res", len(profiles)
+                args.renumber_res, "--renumber-res", n_chains
             ),
             res_id_range=_parse_res_id_range(
-                args.res_id_range, "--res-id-range", len(profiles)
+                args.res_id_range, "--res-id-range", n_chains
             ),
             first_tick_id=_parse_first_tick_id(
-                args.first_tick_id, "--first-tick-id", len(profiles)
+                args.first_tick_id, "--first-tick-id", n_chains
             ),
             mark_res_ids=_parse_mark_res_ids(
                 args.mark_res_ids, "--mark-res-ids", len(profiles)

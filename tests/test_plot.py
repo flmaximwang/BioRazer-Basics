@@ -204,7 +204,11 @@ class TestSeqlogoNumbering:
 
     @staticmethod
     def _profiles(n_chains=1, length=20, char="A"):
-        """构造 n_chains 条等长全 A 的 profile dict (走 FASTA 路径, 链以 ':' 分隔)。"""
+        """构造 n_chains 条等长全 A 的 profile (走 FASTA 路径, 链以 ':' 分隔)。
+
+        单链 (n_chains=1, 无 ':') 时 Fasta_Profile.read 返回单个
+        SequenceProfile, 多链时返回 dict。
+        """
         import io
 
         from biorazer.sequence.io import Fasta_Profile
@@ -498,7 +502,7 @@ class TestSeqlogoNumbering:
             _pad_profile_left,
         )
 
-        prof = self._profiles(length=3)[0]
+        prof = self._profiles(length=3)
         padded = _pad_profile_left(prof, 2)
         assert padded.symbols.shape == (5, prof.symbols.shape[1])
         assert not padded.symbols[:2].any()

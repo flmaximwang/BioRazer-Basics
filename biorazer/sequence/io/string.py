@@ -47,11 +47,15 @@ class Fasta_StrDict(Converter):
 
 class Fasta_Profile(Converter):
     """
-    Read a FASTA file of equal-length sequences into per-chain
-    SequenceProfile objects.
+    Read a FASTA file of equal-length sequences into SequenceProfile
+    objects.
 
     Sequences may contain multiple chains separated by ``':'`` (e.g.
-    LigandMPNN output). FASTA records are counted 0-based for
+    LigandMPNN output). Whether the file is multi-chain is auto-detected
+    from the ``':'`` separator: a single-chain file (no ``':'`` in any
+    record) returns one :class:`SequenceProfile` directly and the
+    ``chains`` parameter is invalid; a multi-chain file returns a dict
+    keyed by chain index. FASTA records are counted 0-based for
     ``ignore_seqs``; chains are counted 0-based for ``chains``.
     """
 
@@ -138,7 +142,7 @@ class Fasta_Profile(Converter):
         self,
         ignore_seqs: int | Iterable[int] | None = None,
         chains: int | Iterable[int] | None = None,
-    ) -> dict[int, SequenceProfile]:
+    ) -> SequenceProfile | dict[int, SequenceProfile]:
         """
         Parameters
         ----------
@@ -146,13 +150,18 @@ class Fasta_Profile(Converter):
             0-based indices of FASTA records to skip.
         chains : int or iterable of int, optional
             0-based indices of chains to keep, in the given order
-            (default: all chains, in file order).
+            (default: all chains, in file order). Only meaningful for
+            multi-chain FASTA files (sequences joined by ``':'``);
+            for a single-chain file this parameter is invalid and
+            passing it raises ValueError.
 
         Returns
         -------
-        dict[int, SequenceProfile]
-            Selected chain index (0-based) -> column-count profile
-            (symbols shape (L, 24), gap mask all False).
+        SequenceProfile or dict[int, SequenceProfile]
+            A single :class:`SequenceProfile` when the FASTA contains
+            no ``':'``-joined chains (all records form one chain); a
+            dict mapping selected chain index (0-based) -> profile
+            (symbols shape (L, 24), gap mask all False) otherwise.
         """
         raw = Fasta_StrDict(self.input_io, self.output_io).read()
         items = list(raw.items())
@@ -178,6 +187,13 @@ class Fasta_Profile(Converter):
             )
         n_chains = n_chain_sizes.pop()
 
+        # 单链输入 (无 ':' 分隔): chains 参数无效, 直接返回单个 profile
+        if n_chains == 1 and chains is not None:
+            raise ValueError(
+                "FASTA 文件无 ':' 分隔的多链, chains 参数无效; "
+                "单链输入直接返回单个 SequenceProfile"
+            )
+
         chain_seqs = [[] for _ in range(n_chains)]
         for name, s in seqs.items():
             parts = s.split(":")
@@ -199,6 +215,9 @@ class Fasta_Profile(Converter):
                 raise ValueError(
                     f"chain {c} has non-protein symbols: {bad}"
                 )
+
+        if n_chains == 1:
+            return self._make_profile(chain_seqs[0])
 
         if chains is None:
             selected = list(range(n_chains))
