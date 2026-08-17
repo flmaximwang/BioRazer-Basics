@@ -141,12 +141,49 @@ def _format_ssbond_records(array: AtomArray, hybrid36: bool) -> list[str]:
     return records
 
 
+def _inject_seg_ids(lines: list[str], array: AtomArray) -> None:
+    """
+    Write the ``seg_id`` annotation into the SEGID columns (73-76) of the
+    ATOM/HETATM lines.
+
+    Why this is needed: biotite's PDB writer has no ``seg_id`` support (no
+    such annotation category; columns 73-76 are always blank), but SEGID is
+    the standard field for grouping atoms by segment (e.g. repeat units of
+    a fiber). Only lines in ``lines`` that start with ATOM/HETATM are
+    touched; the k-th such line corresponds to the k-th atom of ``array``
+    (biotite writes atoms in array order). Values are left-justified in
+    the 4 columns, per PDB convention.
+
+    Parameters
+    ----------
+    lines : list[str]
+        The PDB record lines to modify in place.
+    array : AtomArray
+        The structure being written; the ``seg_id`` annotation must exist
+        when ``lines`` contains ATOM/HETATM records.
+
+    Returns
+    -------
+    None
+    """
+    if "seg_id" not in array.get_annotation_categories():
+        return
+    seg_ids = np.char.ljust(np.asarray(array.seg_id, dtype=str), 4)
+    atom_i = 0
+    for idx, line in enumerate(lines):
+        if line.startswith(("ATOM", "HETATM")):
+            lines[idx] = line[:72] + seg_ids[atom_i] + line[76:]
+            atom_i += 1
+
+
 class AtomArray_Pdb(Converter):
     def write(self, tmp: AtomArray, hybrid36: bool = False):
         """
         Write a PDB file. Intermolecular covalent bonds between a protein
         and a small molecule are additionally written as LINK records, and
         disulfide bonds as SSBOND records, appended at the end of the file.
+        If the array carries a ``seg_id`` annotation, it is written into
+        the SEGID columns (73-76) of the ATOM/HETATM records.
         """
         output_file_obj = pdb.PDBFile()
         pdb.set_structure(output_file_obj, tmp, hybrid36=hybrid36)
@@ -155,6 +192,7 @@ class AtomArray_Pdb(Converter):
                 _format_link_records(tmp, hybrid36)
                 + _format_ssbond_records(tmp, hybrid36)
             )
+        _inject_seg_ids(output_file_obj.lines, tmp)
         output_file_obj.write(self.output_io)
 
 
